@@ -9,8 +9,8 @@ fica com o sistema aberto.
 2. Baixe o SumatraPDF portátil (64 bits) em https://www.sumatrapdfreader.org
    e coloque o arquivo SumatraPDF.exe dentro desta pasta.
 3. Abra o config.json no Bloco de Notas e troque o "site" pelo endereço do
-   sistema, exatamente como aparece no navegador, sem barra no fim.
-   Exemplo:  "site": "https://sistema.daitech.com.br"
+   sistema. Basta o domínio, com https:// e sem barra no fim.
+   Exemplo:  "site": "https://daitechsistemas.com.br"
 4. Dê dois cliques em instalar.bat. O agente abre e passa a abrir sozinho
    sempre que o Windows ligar.
 5. No sistema: Configurações > Módulos Daitech > Impressão direta.

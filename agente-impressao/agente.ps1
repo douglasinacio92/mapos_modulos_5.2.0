@@ -18,7 +18,10 @@ $pasta = Split-Path -Parent $MyInvocation.MyCommand.Path
 $config = Get-Content -Raw -Encoding UTF8 (Join-Path $pasta 'config.json') | ConvertFrom-Json
 
 $porta = if ($config.porta) { [int]$config.porta } else { 9123 }
-$site = ([string]$config.site).TrimEnd('/')
+$site = ([string]$config.site).Trim().TrimEnd('/')
+# O navegador manda só a origem (https://dominio, sem a pasta). Se o config.json
+# tiver o endereço com a pasta do sistema (https://dominio/mapos), usa só a origem.
+if ($site -match '^(https?://[^/]+)') { $site = $Matches[1].ToLower() }
 $sumatra = if ($config.sumatra) { [string]$config.sumatra } else { Join-Path $pasta 'SumatraPDF.exe' }
 $edge = [string]$config.edge
 if (-not $edge) {
@@ -124,7 +127,7 @@ while ($true) {
         if ($null -eq $pedido) { continue }
 
         $origem = [string]$pedido.cabecalhos['origin']
-        if ($origem.TrimEnd('/') -ne $site) {
+        if ($origem.TrimEnd('/').ToLower() -ne $site) {
             Responder $fluxo 403 '' @{ ok = $false; erro = 'Origem não autorizada.' }
             Registrar "Recusado: pedido de '$origem'."
             continue
