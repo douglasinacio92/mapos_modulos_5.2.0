@@ -1,0 +1,330 @@
+#!/usr/bin/env node
+/**
+ * Contraste WCAG dos temas de cor do painel (DESIGN.md, "Color themes").
+ *
+ * Define os tokens de cada tema (padrão, azul, verde, violeta, grafite) em
+ * cada modo (claro, escuro), calcula as razões dos pares que importam e sai
+ * com código 1 se algum reprovar. Node puro, sem dependências.
+ *
+ *   node scripts/contraste-temas.mjs           lista de pares
+ *   node scripts/contraste-temas.mjs --md      tabela de contrastes em Markdown
+ *   node scripts/contraste-temas.mjs --tokens  tabela de tokens em Markdown
+ *
+ * Os valores abaixo são a fonte dos blocos de tema de assets/src/tokens.css
+ * (PR seguinte). Mude aqui e no DESIGN.md juntos.
+ */
+
+import { pathToFileURL } from 'node:url';
+
+const hex = (h) => {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+/** Mistura `fg` com opacidade `a` sobre `bg` (como o navegador). */
+const sobre = (fg, a, bg) => {
+  const f = hex(fg);
+  const b = hex(bg);
+  return toHex(f.map((v, i) => v * a + b[i] * (1 - a)));
+};
+const luz = (h) => {
+  const [r, g, b] = hex(h).map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const razao = (a, b) => {
+  const [x, y] = [luz(a), luz(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+};
+
+/* ---- Bases dos modos (iguais ao DESIGN.md / tokens.css atuais) ---- */
+const CLARO = {
+  canvas: '#ffffff',
+  surface: '#ffffff',
+  subtle: '#f6f5f9',
+  text: '#1f1633',
+  muted: '#5b5470',
+  input: '#8a849c',
+  ring: '#3b82f6',
+};
+const ESCURO = {
+  canvas: '#1f1633',
+  surface: '#150f23',
+  subtle: '#1b1430',
+  text: '#ffffff',
+  muted: sobre('#ffffff', 0.72, '#150f23'), // rgb(255 255 255 / 72%) sobre o card
+  input: '#756d8a',
+  ring: '#3b82f6',
+};
+/** Anel de foco claro, só para a sidebar escura do modo claro (#3b82f6 não chega a 3:1). */
+const ANEL_SIDEBAR = '#93c5fd';
+const tint = (primary, base, a) => sobre(primary, a, base);
+
+/**
+ * Cada tema × modo: cor de ação (primary, hover, pressed, onPrimary), strong
+ * (texto/link na cor da ação), tint (fundo do item ativo) e a sidebar.
+ * `sidebar: null` = a sidebar acompanha surface/tint/strong (padrão e escuro).
+ */
+const claro = (extra) => ({ ...CLARO, ...extra });
+const escuro = (extra) => ({ ...ESCURO, ...extra });
+
+export const TEMAS = {
+  padrao: {
+    light: claro({
+      primary: '#f37338', hover: '#f47e48', pressed: '#db6230', onPrimary: '#1f1633',
+      strong: '#b34d1d', tint: '#feeee7', sidebar: null,
+    }),
+    dark: escuro({
+      primary: '#f37338', hover: '#f47e48', pressed: '#db6230', onPrimary: '#1f1633',
+      strong: '#f37338', tint: '#391f26', sidebar: null,
+    }),
+  },
+  azul: {
+    light: claro({
+      primary: '#2240b8', hover: '#2b4fd6', pressed: '#1a3190', onPrimary: '#ffffff',
+      strong: '#2240b8', tint: tint('#2240b8', '#ffffff', 0.1),
+      sidebar: { bg: '#121a45', hover: '#1c2762', text: '#eef1ff', muted: '#b7c0ea', activeBg: '#2b4fd6', activeText: '#ffffff', accent: '#a3b4ff', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#7f98ff', hover: '#93a9ff', pressed: '#6a85f2', onPrimary: '#1f1633',
+      strong: '#a3b4ff', tint: tint('#7f98ff', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  verde: {
+    light: claro({
+      primary: '#0b6b60', hover: '#0f7a6e', pressed: '#08524a', onPrimary: '#ffffff',
+      strong: '#0b6b60', tint: tint('#0b6b60', '#ffffff', 0.1),
+      sidebar: { bg: '#0a3a35', hover: '#0f4d46', text: '#e8fbf8', muted: '#a9d9d2', activeBg: '#0f7a6e', activeText: '#ffffff', accent: '#5eead4', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#2dd4bf', hover: '#5eead4', pressed: '#19b8a5', onPrimary: '#1f1633',
+      strong: '#5eead4', tint: tint('#2dd4bf', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  violeta: {
+    light: claro({
+      primary: '#7424c4', hover: '#8230d6', pressed: '#5f1da3', onPrimary: '#ffffff',
+      strong: '#7424c4', tint: tint('#7424c4', '#ffffff', 0.1),
+      sidebar: { bg: '#2b1257', hover: '#3d1c78', text: '#f6eeff', muted: '#cdb6ee', activeBg: '#7424c4', activeText: '#ffffff', accent: '#d5a6ff', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#cf86ff', hover: '#da9dff', pressed: '#bd6ff0', onPrimary: '#1f1633',
+      strong: '#dcaaff', tint: tint('#cf86ff', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  rosa: {
+    light: claro({
+      primary: '#be185d', hover: '#c81e66', pressed: '#9d174d', onPrimary: '#ffffff',
+      strong: '#be185d', tint: tint('#be185d', '#ffffff', 0.1),
+      sidebar: { bg: '#4a0d2b', hover: '#63123a', text: '#fff0f6', muted: '#f0b6d0', activeBg: '#be185d', activeText: '#ffffff', accent: '#f9a8d4', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#f472b6', hover: '#f9a8d4', pressed: '#ec4899', onPrimary: '#1f1633',
+      strong: '#f9a8d4', tint: tint('#f472b6', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  ciano: {
+    light: claro({
+      primary: '#0e7490', hover: '#0c6680', pressed: '#155e75', onPrimary: '#ffffff',
+      strong: '#0e7490', tint: tint('#0e7490', '#ffffff', 0.1),
+      sidebar: { bg: '#083344', hover: '#0b4458', text: '#ecfeff', muted: '#a5dbe6', activeBg: '#0e7490', activeText: '#ffffff', accent: '#67e8f9', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#22d3ee', hover: '#67e8f9', pressed: '#06b6d4', onPrimary: '#1f1633',
+      strong: '#67e8f9', tint: tint('#22d3ee', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  ambar: {
+    light: claro({
+      primary: '#f59e0b', hover: '#f7ac2e', pressed: '#d97706', onPrimary: '#1f1633',
+      strong: '#92400e', tint: tint('#f59e0b', '#ffffff', 0.12),
+      sidebar: { bg: '#3b2506', hover: '#52340a', text: '#fff8eb', muted: '#e9cf9f', activeBg: '#f59e0b', activeText: '#1f1633', accent: '#fbbf24', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#fbbf24', hover: '#fcd34d', pressed: '#f59e0b', onPrimary: '#1f1633',
+      strong: '#fcd34d', tint: tint('#fbbf24', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  indigo: {
+    light: claro({
+      primary: '#4338ca', hover: '#4f46e5', pressed: '#3730a3', onPrimary: '#ffffff',
+      strong: '#4338ca', tint: tint('#4338ca', '#ffffff', 0.1),
+      sidebar: { bg: '#1e1b4b', hover: '#2b2770', text: '#eef2ff', muted: '#c3c6f0', activeBg: '#4f46e5', activeText: '#ffffff', accent: '#a5b4fc', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: escuro({
+      primary: '#818cf8', hover: '#a5b4fc', pressed: '#7c86f5', onPrimary: '#1f1633',
+      strong: '#a5b4fc', tint: tint('#818cf8', '#150f23', 0.16), sidebar: null,
+    }),
+  },
+  grafite: {
+    light: claro({
+      primary: '#f37338', hover: '#f47e48', pressed: '#db6230', onPrimary: '#1f1633',
+      strong: '#b34d1d', tint: '#feeee7',
+      sidebar: { bg: '#1c1c1f', hover: '#2a2a2e', text: '#f4f4f5', muted: '#b4b4bc', activeBg: '#f37338', activeText: '#1f1633', accent: '#f37338', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
+    }),
+    dark: {
+      canvas: '#171717', surface: '#1f1f1f', subtle: '#27272a', text: '#fafafa',
+      muted: '#a1a1aa', input: '#74747d', ring: '#3b82f6',
+      primary: '#f97316', hover: '#fb8c3a', pressed: '#ea670c', onPrimary: '#171717',
+      strong: '#fb923c', tint: '#2a2015', sidebar: null,
+    },
+  },
+};
+
+/**
+ * Status (DESIGN.md, Semantic e Panel Dark Mode): a cor-base é fixa; -ink e
+ * -soft mudam com o modo. Fonte: assets/src/tokens.css.
+ */
+const STATUS_BASE = { success: '#15803d', warning: '#a16207', info: '#0369a1', progress: '#6a5fc1', neutral: '#79628c' };
+export const STATUS = {
+  light: {
+    success: { ink: '#166534', soft: '#e3f0e8' }, warning: { ink: '#854d0e', soft: '#f4ece1' },
+    info: { ink: '#075985', soft: '#e1edf4' }, progress: { ink: '#4a3f9e', soft: '#edecf8' },
+    neutral: { ink: '#4b4560', soft: '#efecf1' },
+    danger: { ink: '#b91c1c', soft: '#fbe5e5' },
+  },
+  dark: {
+    success: { ink: '#4ade80', soft: '#1d3032' }, warning: { ink: '#facc15', soft: '#3a2d21' },
+    info: { ink: '#38bdf8', soft: '#1b2b45' }, progress: { ink: '#b8b0f0', soft: '#2b244c' },
+    neutral: { ink: '#d6cfe0', soft: '#2f253e' },
+    danger: { ink: '#f87171', soft: '#391f2f' },
+  },
+};
+
+/**
+ * Grafite escuro tem superfície neutra: os -soft violeta do modo escuro padrão
+ * ficariam tingidos de roxo. Aqui o fundo é o -ink a 14% sobre a superfície do
+ * Grafite (#1f1f1f), sem matiz extra. Mantém os -ink do modo escuro.
+ */
+const STATUS_GRAFITE = {};
+for (const [k, v] of Object.entries(STATUS.dark)) {
+  STATUS_GRAFITE[k] = { ink: v.ink, soft: sobre(v.ink, 0.14, TEMAS.grafite.dark.surface) };
+}
+/** Status do tema × modo: o Grafite escuro tem variantes neutras. */
+export const statusDe = (tema, modo) => (tema === 'grafite' && modo === 'dark' ? STATUS_GRAFITE : STATUS[modo]);
+
+/**
+ * kpi-card: o degradê é a cor-base do status a KPI_MIX sobre a superfície
+ * (mesmo valor do color-mix em assets/src/app.css). O pior ponto é o canto,
+ * onde o degradê é mais forte; confere texto, valor, caption, pill de
+ * tendência (ink sobre soft) e sparkline (-ink) contra esse fundo.
+ */
+const KPI_MIX = 0.20;
+const KPI_STATUS = ['success', 'warning', 'info', 'progress'];
+const ST = statusDe;
+const kpiFundo = (t, modo, s) => sobre(STATUS_BASE[s], KPI_MIX, t.surface);
+const PARES_KPI = [];
+for (const s of KPI_STATUS) {
+  PARES_KPI.push(
+    [`kpi ${s}: label/caption (muted) no canto`, 4.5, (t, m) => [t.muted, kpiFundo(t, m, s)]],
+    [`kpi ${s}: valor (text) no canto`, 4.5, (t, m) => [t.text, kpiFundo(t, m, s)]],
+    [`kpi ${s}: sparkline (ink) no canto`, 3, (t, m, tema) => [ST(tema, m)[s].ink, kpiFundo(t, m, s)]],
+    [`kpi ${s}: ícone (ink on soft)`, 4.5, (t, m, tema) => [ST(tema, m)[s].ink, ST(tema, m)[s].soft]],
+  );
+}
+// Pill de tendência: bom = success, ruim = warning, estável = neutral (ink sobre soft).
+for (const s of ['success', 'warning', 'neutral']) {
+  PARES_KPI.push([`kpi tendência ${s}: ink on soft`, 4.5, (t, m, tema) => [ST(tema, m)[s].ink, ST(tema, m)[s].soft]]);
+}
+
+// Pill de cada status (pill-status): ink sobre soft, em todo tema × modo.
+for (const s of ['success', 'warning', 'danger', 'info', 'progress', 'neutral']) {
+  PARES_KPI.push([`pill ${s}: ink on soft`, 4.5, (t, m, tema) => [ST(tema, m)[s].ink, ST(tema, m)[s].soft]]);
+}
+
+/** Pares conferidos: [rótulo, mínimo, função (t) => [fg, bg]]. */
+const PARES_TEMA = [
+  ['on-primary on primary', 4.5, (t) => [t.onPrimary, t.primary]],
+  ['on-primary on hover', 4.5, (t) => [t.onPrimary, t.hover]],
+  ['on-primary on pressed', 4.5, (t) => [t.onPrimary, t.pressed]],
+  ['primary-strong on canvas', 4.5, (t) => [t.strong, t.canvas]],
+  ['primary-strong on surface', 4.5, (t) => [t.strong, t.surface]],
+  ['primary-strong on primary-tint', 4.5, (t) => [t.strong, t.tint]],
+  ['muted on surface', 4.5, (t) => [t.muted, t.surface]],
+  ['muted on surface-subtle', 4.5, (t) => [t.muted, t.subtle]],
+  ['input border on surface', 3, (t) => [t.input, t.surface]],
+  ['input border on canvas', 3, (t) => [t.input, t.canvas]],
+  ['focus ring on canvas', 3, (t) => [t.ring, t.canvas]],
+  ['focus ring on sidebar', 3, (t) => [t.sidebar?.ring ?? t.ring, t.sidebar?.bg ?? t.surface]],
+  ['sidebar: text', 4.5, (t) => [t.sidebar?.text ?? t.text, t.sidebar?.bg ?? t.surface]],
+  ['sidebar: text on hover', 4.5, (t) => [t.sidebar?.text ?? t.text, t.sidebar?.hover ?? t.subtle]],
+  ['sidebar: muted', 4.5, (t) => [t.sidebar?.muted ?? t.muted, t.sidebar?.bg ?? t.surface]],
+  ['sidebar: accent bar/logo on sidebar', 3, (t) => (t.sidebar ? [t.sidebar.accent, t.sidebar.bg] : null)],
+  ['sidebar: logo label on accent', 4.5, (t) => (t.sidebar ? [t.sidebar.accentInk, t.sidebar.accent] : null)],
+  ['sidebar: active item', 4.5, (t) => [t.sidebar?.activeText ?? t.strong, t.sidebar?.activeBg ?? t.tint]],
+];
+
+const PARES = [...PARES_TEMA, ...PARES_KPI];
+
+/** Cores que a ação nunca pode repetir: status e foco (DESIGN.md, Semantic). */
+const RESERVADAS = {
+  success: '#15803d', info: '#0369a1', progress: '#6a5fc1', warning: '#a16207',
+  danger: '#dc2626', neutral: '#79628c', foco: '#3b82f6',
+  'success-dark': '#4ade80', 'info-dark': '#38bdf8', 'progress-dark': '#b8b0f0',
+};
+
+const executadoPelaCli = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (executadoPelaCli) {
+  const linhas = [];
+  let falhas = 0;
+  for (const [tema, modos] of Object.entries(TEMAS)) {
+    for (const [modo, t] of Object.entries(modos)) {
+      for (const [rotulo, min, fn] of PARES) {
+        const par = fn(t, modo === 'light' ? 'light' : 'dark', tema);
+        if (!par) continue;
+        const [fg, bg] = par;
+        const r = razao(fg, bg);
+        const ok = r >= min;
+        if (!ok) falhas++;
+        linhas.push({ tema, modo, rotulo, fg, bg, min, r, ok });
+      }
+      for (const [nome, h] of Object.entries(RESERVADAS)) {
+        if (t.primary.toLowerCase() === h) {
+          falhas++;
+          linhas.push({ tema, modo, rotulo: `primary equals ${nome}`, fg: t.primary, bg: h, min: 0, r: 0, ok: false });
+        }
+      }
+    }
+  }
+
+  const arg = process.argv[2];
+  const f = (n) => n.toFixed(2).replace('.', ',');
+
+  if (arg === '--tokens') {
+    console.log('| Tema | Modo | primary | hover | pressed | on-primary | strong | tint | sidebar | item ativo (fundo / texto) | acento (barra, logo) |');
+    console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+    for (const [tema, modos] of Object.entries(TEMAS)) {
+      for (const [modo, t] of Object.entries(modos)) {
+        const s = t.sidebar;
+        console.log(`| ${tema} | ${modo} | \`${t.primary}\` | \`${t.hover}\` | \`${t.pressed}\` | \`${t.onPrimary}\` | \`${t.strong}\` | \`${t.tint}\` | ${s ? `\`${s.bg}\`` : 'surface'} | ${s ? `\`${s.activeBg}\` / \`${s.activeText}\`` : 'tint / strong'} | ${s ? `\`${s.accent}\`` : 'primary'} |`);
+      }
+    }
+  } else if (arg === '--md') {
+    // Um par por linha, um tema × modo por coluna; ponto decimal, como o DESIGN.md.
+    const cols = Object.entries(TEMAS).flatMap(([tema, modos]) => Object.keys(modos).map((modo) => [tema, modo]));
+    const ponto = (n) => n.toFixed(2);
+    console.log(`| Pair | Min | ${cols.map(([t, m]) => `${t} ${m}`).join(' | ')} |`);
+    console.log(`| --- | ---: | ${cols.map(() => '---:').join(' | ')} |`);
+    for (const [rotulo, min] of PARES) {
+      const cel = cols.map(([t, m]) => {
+        const l = linhas.find((x) => x.tema === t && x.modo === m && x.rotulo === rotulo);
+        return l ? ponto(l.r) : '–';
+      });
+      console.log(`| ${rotulo} | ${ponto(min)} | ${cel.join(' | ')} |`);
+    }
+  } else {
+    const w = Math.max(...linhas.map((l) => l.rotulo.length));
+    for (const l of linhas) {
+      console.log(`${l.ok ? 'ok   ' : 'FALHA'} ${l.tema.padEnd(8)} ${l.modo.padEnd(6)} ${l.rotulo.padEnd(w)} ${l.fg} on ${l.bg}  ${f(l.r)}:1 (mín. ${f(l.min)})`);
+    }
+  }
+
+  if (falhas > 0) {
+    console.error(`\n${falhas} par(es) reprovado(s).`);
+    process.exit(1);
+  }
+  if (!arg) console.log(`\nTodos os ${linhas.length} pares passam.`);
+
+}

@@ -1,0 +1,684 @@
+/*
+ * Design tokens da v5, compartilhados pelos dois pontos de entrada do CSS:
+ *
+ * - assets/src/app.css: telas novas (preflight + todas as utilities);
+ * - assets/src/layout.css: moldura do painel (reset e utilities em .v5-shell).
+ *
+ * A fonte de verdade é o DESIGN.md (raiz do repositório): nomes, valores e
+ * contrastes vêm de lá. Mudou o design? Altere primeiro o DESIGN.md, depois
+ * este arquivo.
+ *
+ * Só tokens: além das variáveis em :root e .dark, nada aqui gera regra para
+ * elementos.
+ */
+
+/*
+ * Modo escuro por classe: <html class="dark">. O servidor aplica a classe no
+ * modo escuro, e o assets/js/tema.js no modo "sistema". Ver tema_helper.php.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens
+ * -------------
+ * Duas camadas:
+ *
+ * 1. Variáveis cruas (--mapos-*), definidas em :root e redefinidas em .dark.
+ *    Só elas mudam entre os modos claro e escuro (DESIGN.md, "Panel Dark
+ *    Mode").
+ * 2. Tokens do Tailwind (@theme). Os que mudam com o modo apontam para as
+ *    variáveis cruas; com `inline`, a utility usa var(--mapos-*) direto, então
+ *    bg-surface acompanha o modo sem precisar de dark:bg-...
+ *
+ * A paleta padrão do Tailwind (bg-white, text-gray-500, bg-black/50...) está
+ * desligada: só existem as cores abaixo. Para uma cor nova, ela entra antes
+ * no DESIGN.md.
+ *
+ * `static` faz o Tailwind emitir as variáveis mesmo que nenhuma view use a
+ * utility ainda: o CSS escrito à mão (layout) pode usar var(--color-surface).
+ *
+ * Utilities mais usadas (nome do DESIGN.md entre parênteses)
+ * ---------------------------------------------------------
+ * Superfícies  bg-bg (fundo da aplicação) · bg-surface (cards, sidebar, topbar)
+ *              · bg-surface-subtle (cabeçalho de tabela, hover, campo
+ *              desabilitado)
+ * Texto        text-text ({colors.ink} / {colors.on-dark}) · text-muted
+ *              ({colors.ink-muted} / {colors.on-dark-muted}) · text-disabled
+ * Bordas       border-border (cards, divisores) · border-input
+ *              ({colors.hairline-input}, borda de campo, 3:1)
+ * Campos       bg-field (branco / #1f1633 no escuro) · focus:shadow-field-focus
+ * Ação         bg-primary + text-on-primary (rótulo sempre ink, nunca branco)
+ *              · hover:bg-primary-hover · active:bg-primary-pressed
+ *              · bg-primary-tint (fundo do item ativo) · text-primary-strong
+ *              (laranja como texto ou link)
+ * Status       text-{estado}-ink sobre bg-{estado}-soft, para success,
+ *              warning, danger, info, progress e neutral; bg-{estado} é a cor
+ *              base (ponto, ícone, bg-danger do botão de perigo)
+ * Foco         outline-ring ({colors.ring-focus}, #3B82F6), 3px
+ * Tipografia   text-body-md, text-label-md, text-caption, text-heading-xl,
+ *              text-button-cap (+ uppercase), font-display, font-mono...
+ * Forma        rounded-xs..rounded-xxl e rounded-full; shadow-elev-1..4
+ *
+ * Espaçamento: a escala do DESIGN.md (2, 4, 8, 12, 16, 24, 32 e 96px) já é a
+ * do Tailwind: p-0.5, p-1, p-2, p-3, p-4, p-6, p-8, p-24.
+ */
+@theme inline static {
+  --color-*: initial;
+
+  /* Superfícies, texto e bordas (mudam com o modo) */
+  --color-bg: var(--mapos-bg);
+  --color-surface: var(--mapos-surface);
+  --color-surface-subtle: var(--mapos-surface-subtle);
+  --color-text: var(--mapos-text);
+  --color-muted: var(--mapos-muted);
+  --color-border: var(--mapos-border);
+  --color-input: var(--mapos-input);
+  --color-field: var(--mapos-field);
+  --color-disabled: var(--mapos-disabled);
+  --color-disabled-bg: var(--mapos-disabled-bg);
+
+  /*
+   * Ação: uma cor só, o laranja #F37338. Com branco dá 2,87:1 (reprova), com
+   * o ink dá 6,00:1, por isso o rótulo é sempre text-on-primary.
+   */
+  --color-primary: var(--mapos-primary);
+  --color-primary-hover: var(--mapos-primary-hover);
+  --color-primary-pressed: var(--mapos-primary-pressed);
+  --color-on-primary: var(--mapos-on-primary);
+  /* Ink fixo, para texto sobre preenchimentos claros que não mudam com o modo (button-inverted). */
+  --color-ink: #1f1633;
+  --color-primary-tint: var(--mapos-primary-tint);
+  --color-primary-strong: var(--mapos-primary-strong);
+
+  /* Sidebar: tokens próprios para os temas de cor (data-tema) escurecerem a
+     sidebar sem mexer no menu (ver .v5-sidebar no fim do arquivo). */
+  --color-sidebar: var(--mapos-sidebar-bg);
+
+  /* Foco: o único azul do sistema. Use outline-ring, opaco: com 50% de alfa o contraste cai para cerca de 1,8:1. */
+  --color-ring: var(--mapos-ring);
+
+  /*
+   * Status. A base é fixa nos dois modos; -ink (texto) e -soft (fundo) mudam
+   * com o modo. Pills e alertas usam sempre text-{estado}-ink sobre
+   * bg-{estado}-soft. O botão de perigo é bg-danger com text-on-dark nos dois
+   * modos (4,83:1).
+   */
+  --color-success: #15803d;
+  --color-success-ink: var(--mapos-success-ink);
+  --color-success-soft: var(--mapos-success-soft);
+  --color-warning: #a16207;
+  --color-warning-ink: var(--mapos-warning-ink);
+  --color-warning-soft: var(--mapos-warning-soft);
+  --color-danger: #dc2626;
+  --color-danger-ink: var(--mapos-danger-ink);
+  --color-danger-soft: var(--mapos-danger-soft);
+  --color-info: #0369a1;
+  --color-info-ink: var(--mapos-info-ink);
+  --color-info-soft: var(--mapos-info-soft);
+  --color-progress: #6a5fc1;
+  --color-progress-ink: var(--mapos-progress-ink);
+  --color-progress-soft: var(--mapos-progress-soft);
+  --color-neutral: #79628c;
+  --color-neutral-ink: var(--mapos-neutral-ink);
+  --color-neutral-soft: var(--mapos-neutral-soft);
+
+  /* Marca e superfícies de entrada (login, área do cliente): fixas */
+  --color-canvas-dark: #1f1633;
+  --color-night: #150f23;
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: rgb(255 255 255 / 72%);
+  --color-on-dark-faint: rgb(255 255 255 / 18%);
+  --color-hairline-violet: #362d59;
+  --color-hairline-cool: #cfcfdb;
+  --color-hairline-cloud: #e5e7eb;
+  --color-press-light: #f0f0f0;
+  --color-ink-press: #1a1a1a;
+  --color-accent-lime: #c2ef4e;
+  --color-accent-pink: #fa7faa;
+  --color-accent-violet: #6a5fc1;
+  --color-accent-violet-deep: #422082;
+  --color-accent-violet-mid: #79628c;
+  --color-backdrop: rgb(21 15 35 / 55%);
+
+  /* Tipografia (@font-face em assets/src/fonts.css, arquivos em assets/vendor/fonts) */
+  --font-sans: "Rubik", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: "Space Grotesk", "Rubik", system-ui, sans-serif;
+  --font-mono: Monaco, Menlo, "Ubuntu Mono", monospace;
+
+  /*
+   * Escala tipográfica do DESIGN.md: text-{token} aplica tamanho, entrelinha,
+   * peso e espaçamento. Caixa alta não é token: some `uppercase` em
+   * button-cap, eyebrow e micro-cap. display-* e heading-xl usam font-display.
+   */
+  --text-display-hero: 5.5rem;
+  --text-display-hero--line-height: 1.2;
+  --text-display-hero--font-weight: 700;
+  /* Degrau do display-hero no celular (DESIGN.md: 88px → 60px → 48px). */
+  --text-display-hero-sm: 3rem;
+  --text-display-hero-sm--line-height: 1.2;
+  --text-display-hero-sm--font-weight: 700;
+  --text-display-large: 3.75rem;
+  --text-display-large--line-height: 1.1;
+  --text-display-large--font-weight: 500;
+  --text-heading-xl: 1.875rem;
+  --text-heading-xl--line-height: 1.2;
+  --text-heading-xl--font-weight: 500;
+  --text-heading-lg: 1.6875rem;
+  --text-heading-lg--line-height: 1.25;
+  --text-heading-lg--font-weight: 500;
+  --text-heading-md: 1.5rem;
+  --text-heading-md--line-height: 1.25;
+  --text-heading-md--font-weight: 500;
+  --text-heading-sm: 1.25rem;
+  --text-heading-sm--line-height: 1.25;
+  --text-heading-sm--font-weight: 600;
+  --text-body-lg: 1rem;
+  --text-body-lg--line-height: 2;
+  --text-body-lg--font-weight: 400;
+  --text-body-strong: 1rem;
+  --text-body-strong--line-height: 1.5;
+  --text-body-strong--font-weight: 600;
+  --text-body-md: 1rem;
+  --text-body-md--line-height: 1.5;
+  --text-body-md--font-weight: 400;
+  --text-label-md: 1rem;
+  --text-label-md--line-height: 1.5;
+  --text-label-md--font-weight: 500;
+  --text-eyebrow: 0.9375rem;
+  --text-eyebrow--line-height: 1.4;
+  --text-eyebrow--font-weight: 500;
+  --text-eyebrow--letter-spacing: 0.2px;
+  --text-button-cap: 0.875rem;
+  --text-button-cap--line-height: 1.14;
+  --text-button-cap--font-weight: 700;
+  --text-button-cap--letter-spacing: 0.2px;
+  --text-button-cap-light: 0.875rem;
+  --text-button-cap-light--line-height: 1.29;
+  --text-button-cap-light--font-weight: 500;
+  --text-button-cap-light--letter-spacing: 0.2px;
+  --text-caption: 0.875rem;
+  --text-caption--line-height: 1.43;
+  --text-caption--font-weight: 400;
+  --text-micro-cap: 0.625rem;
+  --text-micro-cap--line-height: 1.8;
+  --text-micro-cap--font-weight: 600;
+  --text-micro-cap--letter-spacing: 0.25px;
+  --text-code: 1rem;
+  --text-code--line-height: 1.5;
+  --text-code--font-weight: 400;
+
+  /*
+   * Raios do DESIGN.md (substituem os padrões do Tailwind de mesmo nome).
+   * rounded-control (= md) e rounded-card (= xl) continuam como apelidos.
+   */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-xxl: 18px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+
+  /*
+   * Elevação (DESIGN.md, "Elevation & Depth"). Cards são planos (nível 0) e
+   * se separam pela borda; shadow-overlay é o nível 2 de modais, menus e
+   * toasts. No escuro não há sombra em cards.
+   */
+  --shadow-elev-1: 0 2px 8px 0 rgb(0 0 0 / 8%);
+  --shadow-elev-2: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+  --shadow-elev-3: 0 0 8px 6px rgb(21 15 35);
+  --shadow-elev-4: 0 0.5rem 1.5rem rgb(0 0 0 / 18%);
+  --shadow-field-focus: inset 0 2px 10px rgb(0 0 0 / 15%);
+  --shadow-card: var(--mapos-shadow-card);
+  --shadow-overlay: var(--mapos-shadow-overlay);
+
+  /* Medidas do layout (DESIGN.md, sidebar e topbar) */
+  --spacing-sidebar: 15.75rem;
+  --spacing-sidebar-recolhida: 4.75rem;
+  --spacing-topbar: 4rem;
+}
+
+@layer base {
+  /* Modo claro (padrão). Contrastes conferidos no DESIGN.md. */
+  :root {
+    color-scheme: light;
+
+    --mapos-bg: #ffffff;
+    --mapos-surface: #ffffff;
+    --mapos-surface-subtle: #f6f5f9;
+    --mapos-text: #1f1633;
+    --mapos-muted: #5b5470;
+    --mapos-border: #e5e7eb;
+    --mapos-input: #8a849c;
+    --mapos-field: #ffffff;
+    --mapos-disabled: #8a849c;
+    --mapos-disabled-bg: #e5e7eb;
+    --mapos-primary-tint: #feeee7;
+    --mapos-primary-strong: #b34d1d;
+
+    /* Cor de ação do tema padrão (laranja). Os temas (data-tema) a trocam. */
+    --mapos-primary: #f37338;
+    --mapos-primary-hover: #f47e48;
+    --mapos-primary-pressed: #db6230;
+    --mapos-on-primary: #1f1633;
+
+    /* Sidebar: por padrão igual ao conteúdo (nenhuma mudança visual). */
+    --mapos-sidebar-bg: var(--mapos-surface);
+    --mapos-sidebar-hover: var(--mapos-surface-subtle);
+    --mapos-sidebar-text: var(--mapos-text);
+    --mapos-sidebar-muted: var(--mapos-muted);
+    --mapos-sidebar-border: var(--mapos-border);
+    --mapos-sidebar-active-bg: var(--mapos-primary-tint);
+    --mapos-sidebar-active-text: var(--mapos-primary-strong);
+    --mapos-sidebar-accent: var(--mapos-primary);
+    --mapos-sidebar-accent-ink: var(--mapos-on-primary);
+    --mapos-sidebar-ring: #3b82f6;
+    --mapos-ring: #3b82f6;
+
+    --mapos-success-ink: #166534;
+    --mapos-success-soft: #e3f0e8;
+    --mapos-warning-ink: #854d0e;
+    --mapos-warning-soft: #f4ece1;
+    --mapos-danger-ink: #b91c1c;
+    --mapos-danger-soft: #fbe5e5;
+    --mapos-info-ink: #075985;
+    --mapos-info-soft: #e1edf4;
+    --mapos-progress-ink: #4a3f9e;
+    --mapos-progress-soft: #edecf8;
+    --mapos-neutral-ink: #4b4560;
+    --mapos-neutral-soft: #efecf1;
+
+    --mapos-shadow-card: none;
+    --mapos-shadow-overlay: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+  }
+
+  /*
+   * Modo escuro do painel: a paleta violeta do DESIGN.md, na tela inteira.
+   * .superficie-entrada é o card escuro das telas de entrada (logins): usa a
+   * mesma paleta, qualquer que seja o modo, para rótulos, textos e alertas.
+   */
+  .dark,
+  .superficie-entrada {
+    color-scheme: dark;
+
+    --mapos-bg: #1f1633;
+    --mapos-surface: #150f23;
+    --mapos-surface-subtle: #1b1430;
+    --mapos-text: #ffffff;
+    --mapos-muted: rgb(255 255 255 / 72%);
+    --mapos-border: #362d59;
+    --mapos-input: #756d8a;
+    --mapos-field: #1f1633;
+    --mapos-disabled: rgb(255 255 255 / 45%);
+    --mapos-disabled-bg: rgb(255 255 255 / 8%);
+    --mapos-primary-tint: #391f26;
+    --mapos-primary-strong: #f37338;
+
+    --mapos-primary: #f37338;
+    --mapos-primary-hover: #f47e48;
+    --mapos-primary-pressed: #db6230;
+    --mapos-on-primary: #1f1633;
+
+    /* Sidebar no escuro: acompanha o conteúdo (tela inteira escura). */
+    --mapos-sidebar-bg: var(--mapos-surface);
+    --mapos-sidebar-hover: var(--mapos-surface-subtle);
+    --mapos-sidebar-text: var(--mapos-text);
+    --mapos-sidebar-muted: var(--mapos-muted);
+    --mapos-sidebar-border: var(--mapos-border);
+    --mapos-sidebar-active-bg: var(--mapos-primary-tint);
+    --mapos-sidebar-active-text: var(--mapos-primary-strong);
+    --mapos-sidebar-accent: var(--mapos-primary);
+    --mapos-sidebar-accent-ink: var(--mapos-on-primary);
+    --mapos-sidebar-ring: #3b82f6;
+    --mapos-ring: #3b82f6;
+
+    --mapos-success-ink: #4ade80;
+    --mapos-success-soft: #1d3032;
+    --mapos-warning-ink: #facc15;
+    --mapos-warning-soft: #3a2d21;
+    --mapos-danger-ink: #f87171;
+    --mapos-danger-soft: #391f2f;
+    --mapos-info-ink: #38bdf8;
+    --mapos-info-soft: #1b2b45;
+    --mapos-progress-ink: #b8b0f0;
+    --mapos-progress-soft: #2b244c;
+    --mapos-neutral-ink: #d6cfe0;
+    --mapos-neutral-soft: #2f253e;
+
+    --mapos-shadow-card: none;
+    --mapos-shadow-overlay: 0 10px 30px rgb(0 0 0 / 55%);
+  }
+
+  /*
+   * Nas telas de entrada os campos continuam claros (DESIGN.md text-input:
+   * branco com borda hairline-input), também dentro do card escuro.
+   */
+  .superficie-entrada :where(input, select, textarea) {
+    color-scheme: light;
+
+    --mapos-text: #1f1633;
+    --mapos-muted: #5b5470;
+    --mapos-input: #8a849c;
+    --mapos-field: #ffffff;
+    --mapos-surface-subtle: #f6f5f9;
+    --mapos-disabled: #8a849c;
+    --mapos-disabled-bg: #e5e7eb;
+  }
+
+  /*
+   * Sidebar: redefine as variáveis --mapos-* com os tokens --mapos-sidebar-*.
+   * No tema padrão eles são iguais ao conteúdo, então nada muda. Os temas
+   * escurecem a sidebar do modo claro sem mexer no HTML do menu. O anel de
+   * foco também vem de um token, para ser claro sobre a sidebar escura. O
+   * acento (barra do item ativo e quadrado do logo, ambos bg-primary) também:
+   * a cor de ação do tema não tem contraste sobre a sidebar escura.
+   */
+  .v5-sidebar {
+    --mapos-surface: var(--mapos-sidebar-bg);
+    --mapos-surface-subtle: var(--mapos-sidebar-hover);
+    --mapos-text: var(--mapos-sidebar-text);
+    --mapos-muted: var(--mapos-sidebar-muted);
+    --mapos-border: var(--mapos-sidebar-border);
+    --mapos-primary-tint: var(--mapos-sidebar-active-bg);
+    --mapos-primary-strong: var(--mapos-sidebar-active-text);
+    --mapos-primary: var(--mapos-sidebar-accent);
+    --mapos-on-primary: var(--mapos-sidebar-accent-ink);
+    --mapos-ring: var(--mapos-sidebar-ring);
+  }
+
+  /*
+   * Temas de cor (DESIGN.md, Color Themes). O atributo data-tema no <html>
+   * (assets/js/tema.js) é independente do modo (.dark). Claro: troca a cor de
+   * ação e escurece a sidebar. Escuro: só a cor de ação (Grafite troca a
+   * paleta inteira). Valores de scripts/contraste-temas.mjs. As telas de
+   * entrada (.superficie-entrada) voltam à marca laranja. Um elemento com
+   * data-tema (as amostras de Configurações) também recebe a cor do tema.
+   */
+
+  :root[data-tema="azul"]:not(.dark),
+  :root:not(.dark) [data-tema="azul"] {
+    --mapos-primary: #2240b8;
+    --mapos-primary-hover: #2b4fd6;
+    --mapos-primary-pressed: #1a3190;
+    --mapos-on-primary: #ffffff;
+    --mapos-primary-strong: #2240b8;
+    --mapos-primary-tint: #e9ecf8;
+
+    --mapos-sidebar-bg: #121a45;
+    --mapos-sidebar-hover: #1c2762;
+    --mapos-sidebar-text: #eef1ff;
+    --mapos-sidebar-muted: #b7c0ea;
+    --mapos-sidebar-border: #1c2762;
+    --mapos-sidebar-active-bg: #2b4fd6;
+    --mapos-sidebar-active-text: #ffffff;
+    --mapos-sidebar-accent: #a3b4ff;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root[data-tema="verde"]:not(.dark),
+  :root:not(.dark) [data-tema="verde"] {
+    --mapos-primary: #0b6b60;
+    --mapos-primary-hover: #0f7a6e;
+    --mapos-primary-pressed: #08524a;
+    --mapos-on-primary: #ffffff;
+    --mapos-primary-strong: #0b6b60;
+    --mapos-primary-tint: #e7f0ef;
+
+    --mapos-sidebar-bg: #0a3a35;
+    --mapos-sidebar-hover: #0f4d46;
+    --mapos-sidebar-text: #e8fbf8;
+    --mapos-sidebar-muted: #a9d9d2;
+    --mapos-sidebar-border: #0f4d46;
+    --mapos-sidebar-active-bg: #0f7a6e;
+    --mapos-sidebar-active-text: #ffffff;
+    --mapos-sidebar-accent: #5eead4;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root[data-tema="violeta"]:not(.dark),
+  :root:not(.dark) [data-tema="violeta"] {
+    --mapos-primary: #7424c4;
+    --mapos-primary-hover: #8230d6;
+    --mapos-primary-pressed: #5f1da3;
+    --mapos-on-primary: #ffffff;
+    --mapos-primary-strong: #7424c4;
+    --mapos-primary-tint: #f1e9f9;
+
+    --mapos-sidebar-bg: #2b1257;
+    --mapos-sidebar-hover: #3d1c78;
+    --mapos-sidebar-text: #f6eeff;
+    --mapos-sidebar-muted: #cdb6ee;
+    --mapos-sidebar-border: #3d1c78;
+    --mapos-sidebar-active-bg: #7424c4;
+    --mapos-sidebar-active-text: #ffffff;
+    --mapos-sidebar-accent: #d5a6ff;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root[data-tema="grafite"]:not(.dark),
+  :root:not(.dark) [data-tema="grafite"] {
+    --mapos-primary: #f37338;
+    --mapos-primary-hover: #f47e48;
+    --mapos-primary-pressed: #db6230;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #b34d1d;
+    --mapos-primary-tint: #feeee7;
+
+    --mapos-sidebar-bg: #1c1c1f;
+    --mapos-sidebar-hover: #2a2a2e;
+    --mapos-sidebar-text: #f4f4f5;
+    --mapos-sidebar-muted: #b4b4bc;
+    --mapos-sidebar-border: #2a2a2e;
+    --mapos-sidebar-active-bg: #f37338;
+    --mapos-sidebar-active-text: #1f1633;
+    --mapos-sidebar-accent: #f37338;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root.dark[data-tema="azul"],
+  .dark [data-tema="azul"] {
+    --mapos-primary: #7f98ff;
+    --mapos-primary-hover: #93a9ff;
+    --mapos-primary-pressed: #6a85f2;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #a3b4ff;
+    --mapos-primary-tint: #262546;
+  }
+
+  :root.dark[data-tema="verde"],
+  .dark [data-tema="verde"] {
+    --mapos-primary: #2dd4bf;
+    --mapos-primary-hover: #5eead4;
+    --mapos-primary-pressed: #19b8a5;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #5eead4;
+    --mapos-primary-tint: #192f3c;
+  }
+
+  :root.dark[data-tema="violeta"],
+  .dark [data-tema="violeta"] {
+    --mapos-primary: #cf86ff;
+    --mapos-primary-hover: #da9dff;
+    --mapos-primary-pressed: #bd6ff0;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #dcaaff;
+    --mapos-primary-tint: #332246;
+  }
+
+  /* Módulos Daitech: temas Rosa, Ciano, Âmbar e Índigo (valores de scripts/contraste-temas.mjs). */
+  :root[data-tema="rosa"]:not(.dark),
+  :root:not(.dark) [data-tema="rosa"] {
+    --mapos-primary: #be185d;
+    --mapos-primary-hover: #c81e66;
+    --mapos-primary-pressed: #9d174d;
+    --mapos-on-primary: #ffffff;
+    --mapos-primary-strong: #be185d;
+    --mapos-primary-tint: #f9e8ef;
+
+    --mapos-sidebar-bg: #4a0d2b;
+    --mapos-sidebar-hover: #63123a;
+    --mapos-sidebar-text: #fff0f6;
+    --mapos-sidebar-muted: #f0b6d0;
+    --mapos-sidebar-border: #63123a;
+    --mapos-sidebar-active-bg: #be185d;
+    --mapos-sidebar-active-text: #ffffff;
+    --mapos-sidebar-accent: #f9a8d4;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root[data-tema="ciano"]:not(.dark),
+  :root:not(.dark) [data-tema="ciano"] {
+    --mapos-primary: #0e7490;
+    --mapos-primary-hover: #0c6680;
+    --mapos-primary-pressed: #155e75;
+    --mapos-on-primary: #ffffff;
+    --mapos-primary-strong: #0e7490;
+    --mapos-primary-tint: #e7f1f4;
+
+    --mapos-sidebar-bg: #083344;
+    --mapos-sidebar-hover: #0b4458;
+    --mapos-sidebar-text: #ecfeff;
+    --mapos-sidebar-muted: #a5dbe6;
+    --mapos-sidebar-border: #0b4458;
+    --mapos-sidebar-active-bg: #0e7490;
+    --mapos-sidebar-active-text: #ffffff;
+    --mapos-sidebar-accent: #67e8f9;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root[data-tema="ambar"]:not(.dark),
+  :root:not(.dark) [data-tema="ambar"] {
+    --mapos-primary: #f59e0b;
+    --mapos-primary-hover: #f7ac2e;
+    --mapos-primary-pressed: #d97706;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #92400e;
+    --mapos-primary-tint: #fef3e2;
+
+    --mapos-sidebar-bg: #3b2506;
+    --mapos-sidebar-hover: #52340a;
+    --mapos-sidebar-text: #fff8eb;
+    --mapos-sidebar-muted: #e9cf9f;
+    --mapos-sidebar-border: #52340a;
+    --mapos-sidebar-active-bg: #f59e0b;
+    --mapos-sidebar-active-text: #1f1633;
+    --mapos-sidebar-accent: #fbbf24;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root[data-tema="indigo"]:not(.dark),
+  :root:not(.dark) [data-tema="indigo"] {
+    --mapos-primary: #4338ca;
+    --mapos-primary-hover: #4f46e5;
+    --mapos-primary-pressed: #3730a3;
+    --mapos-on-primary: #ffffff;
+    --mapos-primary-strong: #4338ca;
+    --mapos-primary-tint: #ecebfa;
+
+    --mapos-sidebar-bg: #1e1b4b;
+    --mapos-sidebar-hover: #2b2770;
+    --mapos-sidebar-text: #eef2ff;
+    --mapos-sidebar-muted: #c3c6f0;
+    --mapos-sidebar-border: #2b2770;
+    --mapos-sidebar-active-bg: #4f46e5;
+    --mapos-sidebar-active-text: #ffffff;
+    --mapos-sidebar-accent: #a5b4fc;
+    --mapos-sidebar-accent-ink: #1f1633;
+    --mapos-sidebar-ring: #93c5fd;
+  }
+
+  :root.dark[data-tema="rosa"],
+  .dark [data-tema="rosa"] {
+    --mapos-primary: #f472b6;
+    --mapos-primary-hover: #f9a8d4;
+    --mapos-primary-pressed: #ec4899;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #f9a8d4;
+    --mapos-primary-tint: #391f3b;
+  }
+
+  :root.dark[data-tema="ciano"],
+  .dark [data-tema="ciano"] {
+    --mapos-primary: #22d3ee;
+    --mapos-primary-hover: #67e8f9;
+    --mapos-primary-pressed: #06b6d4;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #67e8f9;
+    --mapos-primary-tint: #172e43;
+  }
+
+  :root.dark[data-tema="ambar"],
+  .dark [data-tema="ambar"] {
+    --mapos-primary: #fbbf24;
+    --mapos-primary-hover: #fcd34d;
+    --mapos-primary-pressed: #f59e0b;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #fcd34d;
+    --mapos-primary-tint: #3a2b23;
+  }
+
+  :root.dark[data-tema="indigo"],
+  .dark [data-tema="indigo"] {
+    --mapos-primary: #818cf8;
+    --mapos-primary-hover: #a5b4fc;
+    --mapos-primary-pressed: #7c86f5;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #a5b4fc;
+    --mapos-primary-tint: #262345;
+  }
+
+  /* Amostra do tema padrão (Configurações): sempre o laranja, qualquer que seja o tema ativo. */
+  [data-tema="padrao"] {
+    --mapos-primary: #f37338;
+    --mapos-primary-hover: #f47e48;
+    --mapos-primary-pressed: #db6230;
+    --mapos-on-primary: #1f1633;
+  }
+
+  /* Grafite escuro: paleta neutra completa, ação laranja (tela inteira). */
+  :root.dark[data-tema="grafite"],
+  .dark [data-tema="grafite"] {
+    --mapos-bg: #171717;
+    --mapos-surface: #1f1f1f;
+    --mapos-surface-subtle: #27272a;
+    --mapos-text: #fafafa;
+    --mapos-muted: #a1a1aa;
+    --mapos-border: #3f3f46;
+    --mapos-input: #74747d;
+    --mapos-field: #27272a;
+
+    --mapos-primary: #f97316;
+    --mapos-primary-hover: #fb8c3a;
+    --mapos-primary-pressed: #ea670c;
+    --mapos-on-primary: #171717;
+    --mapos-primary-strong: #fb923c;
+    --mapos-primary-tint: #2a2015;
+
+    /* Status: -ink a 14% sobre #1f1f1f (sem o matiz violeta do modo escuro padrão). */
+    --mapos-success-soft: #253a2d;
+    --mapos-warning-soft: #3e371e;
+    --mapos-danger-soft: #3d2a2a;
+    --mapos-info-soft: #23353d;
+    --mapos-progress-soft: #34333c;
+    --mapos-neutral-soft: #39383a;
+  }
+
+  /* Entrada: sempre a marca, qualquer que seja o tema. */
+  :root[data-tema] .superficie-entrada {
+    --mapos-primary: #f37338;
+    --mapos-primary-hover: #f47e48;
+    --mapos-primary-pressed: #db6230;
+    --mapos-on-primary: #1f1633;
+    --mapos-primary-strong: #f37338;
+    --mapos-primary-tint: #391f26;
+  }
+}

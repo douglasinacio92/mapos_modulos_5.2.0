@@ -1,0 +1,1445 @@
+diff --git a/application/.env.example b/application/.env.example
+index 16076eaa..4fc32eca 100644
+--- a/application/.env.example
++++ b/application/.env.example
+@@ -1,4 +1,4 @@
+-APP_NAME="Map-OS"
++APP_NAME="Daitech-OS"
+ APP_SUBNAME="Sistema de Controle de Ordens de Serviço"
+ APP_TIMEZONE=America/Sao_Paulo
+ APP_BASEURL="enter_baseurl"
+diff --git a/application/config/autoload.php b/application/config/autoload.php
+index b90a0cf2..e750ff77 100644
+--- a/application/config/autoload.php
++++ b/application/config/autoload.php
+@@ -66,7 +66,7 @@ $autoload['libraries'] = ['database', 'session', 'permission'];
+ |	$autoload['helper'] = array('url', 'file');
+ */
+ 
+-$autoload['helper'] = ['url', 'audit', 'date', 'dd', 'validation', 'general', 'armazenamento', 'captcha', 'escape', 'tema', 'js', 'componente', 'icone', 'layout', 'listagem', 'status'];
++$autoload['helper'] = ['url', 'audit', 'date', 'dd', 'validation', 'general', 'armazenamento', 'captcha', 'escape', 'tema', 'js', 'componente', 'icone', 'layout', 'listagem', 'status', 'daitech'];
+ 
+ /*
+ | -------------------------------------------------------------------
+diff --git a/application/config/config.php b/application/config/config.php
+index d275a0cf..8d2807ad 100644
+--- a/application/config/config.php
++++ b/application/config/config.php
+@@ -12,7 +12,7 @@ $config['app_version'] = '5.2.0';
+ /**
+  * Nome do sistema
+  */
+-$config['app_name'] = $_ENV['APP_NAME'] ?? 'Map-OS';
++$config['app_name'] = $_ENV['APP_NAME'] ?? 'Daitech-OS';
+ 
+ /**
+  * Descrição do sistema
+diff --git a/application/config/permissions_map.php b/application/config/permissions_map.php
+index 952566ef..2d2c06fa 100644
+--- a/application/config/permissions_map.php
++++ b/application/config/permissions_map.php
+@@ -254,3 +254,8 @@ $config['permissions_map'] = [
+         'formatarChave' => false,
+     ],
+ ];
++
++// Módulos Daitech: rotas dos controllers próprios (agenda, Kanban, PDV...).
++if (is_file(__DIR__ . '/daitech_permissions_map.php')) {
++    include __DIR__ . '/daitech_permissions_map.php';
++}
+diff --git a/application/config/routes.php b/application/config/routes.php
+index 6642ab57..1ce8ca59 100644
+--- a/application/config/routes.php
++++ b/application/config/routes.php
+@@ -45,6 +45,10 @@ if (! defined('BASEPATH')) {
+ $route['default_controller'] = 'mapos';
+ $route['404_override'] = '';
+ 
++// Módulos Daitech: o link de acompanhamento da OS da 4.x (mine/os_direta/ID?doc=)
++// abre a tela pública de acompanhamento.
++$route['mine/os_direta/(:num)'] = 'acompanhar/os/$1';
++
+ // Rotas da API
+ if (filter_var($_ENV['API_ENABLED'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+     require APPPATH . 'config/routes_api.php';
+diff --git a/application/controllers/Mapos.php b/application/controllers/Mapos.php
+index fb89a0af..7f08c1f7 100644
+--- a/application/controllers/Mapos.php
++++ b/application/controllers/Mapos.php
+@@ -790,7 +790,7 @@ class Mapos extends MY_Controller
+         try {
+             $release = $this->github_updater->ultimaRelease();
+         } catch (Throwable $e) {
+-            log_message('error', 'Atualização do Map-OS: ' . $e->getMessage());
++            log_message('error', 'Atualização do Daitech-OS: ' . $e->getMessage());
+             $erro = 'Não foi possível consultar as releases no GitHub agora. Tente de novo em alguns minutos.';
+         }
+ 
+@@ -825,13 +825,13 @@ class Mapos extends MY_Controller
+ 
+         try {
+             $resultado = $this->github_updater->atualizar((string) $this->input->post('versao'));
+-            log_info('Atualizou o Map-OS para a versão ' . $resultado['versao'] . '.');
+-            $this->session->set_flashdata('success', 'Map-OS atualizado para a versão ' . $resultado['versao'] . '. Agora clique em "Atualizar banco de dados" para aplicar as mudanças das tabelas.');
++            log_info('Atualizou o Daitech-OS para a versão ' . $resultado['versao'] . '.');
++            $this->session->set_flashdata('success', 'Daitech-OS atualizado para a versão ' . $resultado['versao'] . '. Agora clique em "Atualizar banco de dados" para aplicar as mudanças das tabelas.');
+ 
+             return redirect(site_url('mapos/configurar?aba=sistema'));
+         } catch (Throwable $e) {
+-            log_message('error', 'Atualização do Map-OS: ' . $e->getMessage());
+-            $this->session->set_flashdata('error', $e instanceof RuntimeException ? $e->getMessage() : 'Erro ao atualizar o Map-OS. Veja o log da aplicação.');
++            log_message('error', 'Atualização do Daitech-OS: ' . $e->getMessage());
++            $this->session->set_flashdata('error', $e instanceof RuntimeException ? $e->getMessage() : 'Erro ao atualizar o Daitech-OS. Veja o log da aplicação.');
+ 
+             return redirect(site_url('mapos/atualizacao'));
+         }
+@@ -872,6 +872,12 @@ class Mapos extends MY_Controller
+             $podeEditar && $this->os_model->isEditable($os->idOs) ? site_url('os/editar/' . (int) $os->idOs) : null
+         ), $allOs);
+ 
++        // Módulos Daitech: visitas da agenda externa, sem filtro de status.
++        if ($status === null && function_exists('daitechEventosDaAgenda') && $this->permite('vAgendamento')) {
++            $this->load->model('agendamentos_model');
++            $events = array_merge($events, daitechEventosDaAgenda($this->agendamentos_model->doPeriodo($start, $end), site_url('agendamentos')));
++        }
++
+         return $this->output
+             ->set_content_type('application/json')
+             ->set_status_header(200)
+diff --git a/application/controllers/Os.php b/application/controllers/Os.php
+index cd804b7f..14d01ca8 100644
+--- a/application/controllers/Os.php
++++ b/application/controllers/Os.php
+@@ -167,6 +167,11 @@ class Os extends MY_Controller
+             if ($erros === []) {
+                 $idOs = $os === null ? $this->criarOs($dados) : $this->salvarOs($os, $dados);
+ 
++                if ($idOs !== null && function_exists('osExtrasSalvar')) {
++                    // Módulos Daitech: dados do aparelho e assinatura.
++                    osExtrasSalvar($this->db, $idOs, $this->input->post());
++                }
++
+                 if ($idOs !== null) {
+                     $this->notificarOs($idOs, $os === null ? 'Ordem de Serviço - Criada' : 'Ordem de Serviço - Editada');
+ 
+@@ -196,6 +201,8 @@ class Os extends MY_Controller
+                 'usuarios_id' => (string) $this->session->userdata('id_admin'),
+                 'status' => 'Aberto',
+                 'dataInicial' => date('Y-m-d'),
++                // Módulos Daitech: previsão de entrega em 3 dias.
++                'dataFinal' => date('Y-m-d', strtotime('+3 days')),
+             ]
+         );
+         $this->data['erros'] = $erros;
+diff --git a/application/controllers/Vendas.php b/application/controllers/Vendas.php
+index 3957d880..30b47cc9 100644
+--- a/application/controllers/Vendas.php
++++ b/application/controllers/Vendas.php
+@@ -57,6 +57,10 @@ class Vendas extends MY_Controller
+ 
+         if ($this->data['pode']['adicionar']) {
+             $this->data['topbar_acao'] = ['label' => 'Nova venda', 'icon' => 'plus', 'href' => site_url('vendas/adicionar')];
++            // Módulos Daitech: PDV ao lado de "Nova venda".
++            if (is_file(APPPATH . 'controllers/Pdv.php')) {
++                $this->data['topbar_acao_extra'] = ['label' => 'PDV', 'icon' => 'scan-barcode', 'href' => site_url('pdv')];
++            }
+         }
+ 
+         $this->data['view'] = 'vendas/vendas';
+diff --git a/application/controllers/api/v1/ApiController.php b/application/controllers/api/v1/ApiController.php
+index 4dbfb201..1bba171e 100644
+--- a/application/controllers/api/v1/ApiController.php
++++ b/application/controllers/api/v1/ApiController.php
+@@ -134,7 +134,7 @@ class ApiController extends REST_Controller
+ 
+         $this->response([
+             'status' => true,
+-            'message' => 'Dados do Map-OS',
++            'message' => 'Dados do Daitech-OS',
+             'result' => $result,
+         ], REST_Controller::HTTP_OK);
+     }
+diff --git a/application/core/MY_Controller.php b/application/core/MY_Controller.php
+index 18eb2d61..8c2549be 100644
+--- a/application/core/MY_Controller.php
++++ b/application/core/MY_Controller.php
+@@ -8,7 +8,7 @@ class MY_Controller extends CI_Controller
+             // pagination via paginacao(); o application/config/pagination.php
+             // só continua para a API do app.
+             'per_page' => 10,
+-            'app_name' => 'Map-OS',
++            'app_name' => 'Daitech-OS',
+             'os_notification' => 'cliente',
+             'control_estoque' => '1',
+             'notifica_whats' => '',
+@@ -473,7 +473,7 @@ class MY_Controller extends CI_Controller
+             'iniciais' => layoutIniciais($usuario),
+             'avatar' => $avatar,
+             'tem_foto' => $avatar !== base_url() . 'assets/img/User.png',
+-            'nome_sistema' => (string) (($configuracao['app_name'] ?? '') ?: 'Map-OS'),
++            'nome_sistema' => (string) (($configuracao['app_name'] ?? '') ?: 'Daitech-OS'),
+             'versao' => (string) $this->config->item('app_version'),
+             'acao' => is_array($acao) ? $acao : null,
+             'atalhos' => layoutAtalhos($menu, $siteUrl),
+diff --git a/application/database/seeds/Configuracoes.php b/application/database/seeds/Configuracoes.php
+index 19e6bff8..6e3b957c 100644
+--- a/application/database/seeds/Configuracoes.php
++++ b/application/database/seeds/Configuracoes.php
+@@ -12,7 +12,7 @@ class Configuracoes extends Seeder
+             [
+                 'idConfig' => 2,
+                 'config' => 'app_name',
+-                'valor' => 'Map-OS',
++                'valor' => 'Daitech-OS',
+             ],
+             [
+                 'idConfig' => 3,
+diff --git a/application/helpers/configuracoes_helper.php b/application/helpers/configuracoes_helper.php
+index 494e4af8..b6259815 100644
+--- a/application/helpers/configuracoes_helper.php
++++ b/application/helpers/configuracoes_helper.php
+@@ -118,7 +118,7 @@ if (! function_exists('configuracaoCampos')) {
+                 'PAYMENT_GATEWAYS_ASAAS_BOLETO_EXPIRATION' => ['destino' => 'env', 'tipo' => 'opcao', 'rotulo' => 'Vencimento do boleto', 'opcoes' => configuracaoDiasDeBoleto()],
+             ],
+             'api' => [
+-                'API_ENABLED' => ['destino' => 'env', 'tipo' => 'bool_env', 'rotulo' => 'API ligada', 'ajuda' => 'Usada pelo aplicativo do Map-OS.'],
++                'API_ENABLED' => ['destino' => 'env', 'tipo' => 'bool_env', 'rotulo' => 'API ligada', 'ajuda' => 'Usada pelo aplicativo do Daitech-OS.'],
+                 'API_TOKEN_EXPIRE_TIME' => ['destino' => 'env', 'tipo' => 'opcao', 'rotulo' => 'Validade do token de acesso (usuários: no máximo 1 hora)', 'opcoes' => ['60' => '1 minuto', '3600' => '1 hora', '86400' => '1 dia', '604800' => '1 semana', '2592000' => '1 mês']],
+                 'API_JWT_KEY' => ['destino' => 'env', 'tipo' => 'gerar_jwt', 'rotulo' => 'Gerar uma chave nova para os tokens', 'ajuda' => 'Todos os tokens emitidos deixam de valer: quem usa o aplicativo entra de novo.'],
+             ],
+diff --git a/application/helpers/icone_helper.php b/application/helpers/icone_helper.php
+index 9c629eea..e89ec04b 100644
+--- a/application/helpers/icone_helper.php
++++ b/application/helpers/icone_helper.php
+@@ -80,7 +80,9 @@ if (! function_exists('icon')) {
+             'aria-hidden' => $label !== '' ? null : 'true',
+         ]);
+ 
+-        $href = htmlspecialchars(base_url(ICONE_SPRITE) . '#' . $nome, ENT_QUOTES, 'UTF-8');
++        // Módulos Daitech: versão na URL do sprite, para o cache do servidor não servir os ícones antigos.
++        $versao = function_exists('layoutVersaoAsset') ? layoutVersaoAsset(ICONE_SPRITE) : '';
++        $href = htmlspecialchars(base_url(ICONE_SPRITE) . $versao . '#' . $nome, ENT_QUOTES, 'UTF-8');
+ 
+         return new HtmlSeguro('<svg' . $atributos . '><use href="' . $href . '"></use></svg>');
+     }
+diff --git a/application/helpers/layout_helper.php b/application/helpers/layout_helper.php
+index 1bed4a29..8dd12ad8 100644
+--- a/application/helpers/layout_helper.php
++++ b/application/helpers/layout_helper.php
+@@ -71,7 +71,7 @@ if (! function_exists('layoutMenu')) {
+      */
+     function layoutMenu(): array
+     {
+-        return [
++        $menu = [
+             ['grupo' => 'Operação', 'label' => 'Início', 'icon' => 'house', 'url' => '', 'rota' => ['Mapos', 'index'], 'ativo' => ['Mapos/index']],
+             ['grupo' => 'Operação', 'label' => 'Cliente / Fornecedor', 'icon' => 'user', 'url' => 'clientes', 'rota' => ['Clientes', 'index'], 'ativo' => ['Clientes']],
+             ['grupo' => 'Operação', 'label' => 'Produtos', 'icon' => 'shopping-basket', 'url' => 'produtos', 'rota' => ['Produtos', 'index'], 'ativo' => ['Produtos']],
+@@ -112,6 +112,9 @@ if (! function_exists('layoutMenu')) {
+                 ],
+             ],
+         ];
++
++        // Módulos Daitech (helpers/daitech_helper.php): PDV, orçamentos, Kanban...
++        return function_exists('daitechMenu') ? daitechMenu($menu) : $menu;
+     }
+ }
+ 
+@@ -246,6 +249,14 @@ if (! defined('LAYOUT_ROTULOS')) {
+         'novoscodigosdoisfatores' => 'Autenticação em dois fatores',
+         'desativardoisfatores' => 'Autenticação em dois fatores',
+         'minhaconta' => 'Minha conta',
++        // Módulos Daitech
++        'agendamentos' => 'Agenda externa',
++        'orcamentos' => 'Orçamentos',
++        'pdv' => 'PDV',
++        'peliculas' => 'Películas',
++        'notas' => 'Mural de notas',
++        'modulos' => 'Módulos Daitech',
++        'os_extras' => 'Ordens de serviço',
+     ]);
+ }
+ 
+@@ -300,13 +311,29 @@ if (! function_exists('layoutAssets')) {
+     }
+ }
+ 
++if (! function_exists('layoutVersaoAsset')) {
++    /**
++     * "?v=<data de modificação>" de um arquivo de assets/, ou "" se ele não
++     * existir. Módulos Daitech: o servidor (ex.: aaPanel) guarda CSS, JS e SVG
++     * em cache por horas ou dias; com a versão na URL, o navegador busca o
++     * arquivo novo assim que ele muda no servidor.
++     */
++    function layoutVersaoAsset(string $caminho): string
++    {
++        $raiz = defined('FCPATH') ? FCPATH : dirname(APPPATH) . DIRECTORY_SEPARATOR;
++        $arquivo = $raiz . ltrim($caminho, '/');
++
++        return is_file($arquivo) ? '?v=' . filemtime($arquivo) : '';
++    }
++}
++
+ if (! function_exists('layoutUrlAsset')) {
+     /**
+-     * URL final de um asset de layoutAssets().
++     * URL final de um asset de layoutAssets(), com a versão do arquivo.
+      */
+     function layoutUrlAsset(string $caminho, string $baseUrl): string
+     {
+-        return preg_match('#^https?://#', $caminho) ? $caminho : $baseUrl . $caminho;
++        return preg_match('#^https?://#', $caminho) ? $caminho : $baseUrl . $caminho . layoutVersaoAsset($caminho);
+     }
+ }
+ 
+diff --git a/application/helpers/tema_helper.php b/application/helpers/tema_helper.php
+index 5cdd4983..fcc75fe0 100644
+--- a/application/helpers/tema_helper.php
++++ b/application/helpers/tema_helper.php
+@@ -23,7 +23,7 @@ if (! defined('TEMA_MODOS')) {
+ }
+ 
+ if (! defined('TEMA_CORES')) {
+-    define('TEMA_CORES', ['padrao', 'azul', 'verde', 'violeta', 'grafite']);
++    define('TEMA_CORES', ['padrao', 'azul', 'verde', 'violeta', 'rosa', 'ciano', 'ambar', 'indigo', 'grafite']);
+ }
+ 
+ if (! defined('TEMA_PADRAO')) {
+@@ -93,7 +93,7 @@ if (! function_exists('temaCoresRotulos')) {
+      */
+     function temaCoresRotulos(): array
+     {
+-        return ['padrao' => 'Padrão (laranja)', 'azul' => 'Azul', 'verde' => 'Verde', 'violeta' => 'Violeta', 'grafite' => 'Grafite'];
++        return ['padrao' => 'Padrão (laranja)', 'azul' => 'Azul', 'verde' => 'Verde', 'violeta' => 'Violeta', 'rosa' => 'Rosa', 'ciano' => 'Ciano', 'ambar' => 'Âmbar', 'indigo' => 'Índigo', 'grafite' => 'Grafite'];
+     }
+ }
+ 
+diff --git a/application/helpers/usuarios_helper.php b/application/helpers/usuarios_helper.php
+index decf4369..288e042d 100644
+--- a/application/helpers/usuarios_helper.php
++++ b/application/helpers/usuarios_helper.php
+@@ -35,6 +35,9 @@ if (! defined('PERMISSOES_MODULOS')) {
+         'Arquivo' => 'Arquivos',
+         'Lancamento' => 'Lançamentos financeiros',
+         'Cobranca' => 'Cobranças',
++        // Módulos Daitech
++        'Agendamento' => 'Agenda externa (visitas)',
++        'Pelicula' => 'Películas',
+     ]);
+ }
+ 
+@@ -58,7 +61,7 @@ if (! defined('PERMISSOES_SISTEMA')) {
+         'cUsuario' => ['Usuários', 'Cadastrar, editar e excluir usuários do painel.'],
+         'cPermissao' => ['Permissões', 'Criar e alterar grupos de permissão (inclusive o próprio).'],
+         'cEmitente' => ['Emitente', 'Dados da empresa nas impressões e no PIX.'],
+-        'cSistema' => ['Configurações do sistema', 'Preferências, atualização do banco e do Map-OS.'],
++        'cSistema' => ['Configurações do sistema', 'Preferências, atualização do banco e do Daitech-OS.'],
+         'cEmail' => ['Fila de e-mails', 'Ver e limpar a fila de envio.'],
+         'cAuditoria' => ['Auditoria', 'Ver o registro das ações dos usuários.'],
+         'cBackup' => ['Backup', 'Baixar a cópia do banco de dados.'],
+diff --git a/application/libraries/Github_updater.php b/application/libraries/Github_updater.php
+index c56262e4..79dfa1c5 100644
+--- a/application/libraries/Github_updater.php
++++ b/application/libraries/Github_updater.php
+@@ -209,7 +209,7 @@ class Github_updater
+             throw new RuntimeException('Essa não é mais a versão mais recente. Verifique a atualização de novo.');
+         }
+         if (! $this->temAtualizacao($release)) {
+-            throw new RuntimeException('O Map-OS já está na versão ' . $this->versaoAtual . '.');
++            throw new RuntimeException('O Daitech-OS já está na versão ' . $this->versaoAtual . '.');
+         }
+ 
+         $trabalho = $this->raiz . '/application/cache/atualizacao';
+diff --git a/application/libraries/Totp.php b/application/libraries/Totp.php
+index ce825a40..4f7a93cb 100644
+--- a/application/libraries/Totp.php
++++ b/application/libraries/Totp.php
+@@ -51,7 +51,7 @@ class Totp
+         }
+ 
+         $this->chave = hash_hkdf('sha256', $segredoDaInstalacao, 32, 'mapos-totp-v1');
+-        $this->emissor = (string) ($opcoes['emissor'] ?? (config_item('app_name') ?: 'Map-OS'));
++        $this->emissor = (string) ($opcoes['emissor'] ?? (config_item('app_name') ?: 'Daitech-OS'));
+     }
+ 
+     public function criarSegredo(): string
+diff --git a/application/models/Vendas_model.php b/application/models/Vendas_model.php
+index ae6adc86..cd23eb42 100644
+--- a/application/models/Vendas_model.php
++++ b/application/models/Vendas_model.php
+@@ -219,11 +219,19 @@ class Vendas_model extends CI_Model
+             ->get('itens_de_vendas')
+             ->row()->subTotal ?? 0);
+ 
++        // Módulos Daitech: serviços e itens avulsos do PDV e dos orçamentos
++        // (vendas_itens_extras) entram no total, na posição dos serviços.
++        $extras = $this->db->table_exists('vendas_itens_extras') ? (float) ($this->db
++            ->select_sum('subTotal')
++            ->where('vendas_id', (int) $venda->idVendas)
++            ->get('vendas_itens_extras')
++            ->row()->subTotal ?? 0) : 0.0;
++
+         // A soma já traz o desconto individual dos itens (#2880); aqui só se
+         // calcula quanto eles somam, para mostrar.
+         $descontoItens = osDescontoDosItens($this->getProdutos((int) $venda->idVendas));
+ 
+-        return osTotais($soma, 0.0, $venda->valor_desconto ?? 0, $venda->tipo_desconto ?? null, $venda->desconto ?? 0, $descontoItens);
++        return osTotais($soma, $extras, $venda->valor_desconto ?? 0, $venda->tipo_desconto ?? null, $venda->desconto ?? 0, $descontoItens);
+     }
+ 
+     /**
+diff --git a/application/views/cobrancas/cobrancas.php b/application/views/cobrancas/cobrancas.php
+index 6a1147af..0c12e3a0 100644
+--- a/application/views/cobrancas/cobrancas.php
++++ b/application/views/cobrancas/cobrancas.php
+@@ -203,7 +203,7 @@ $resumo = ($total === 1 ? '1 cobrança' : number_format($total, 0, ',', '.') . '
+         'message' => [
+             'A cobrança ',
+             new HtmlSeguro('<strong class="font-semibold text-text" data-modal-valor="nome"></strong>'),
+-            ' será cancelada no gateway e removida do Map-OS. Essa ação não pode ser desfeita.',
++            ' será cancelada no gateway e removida do Daitech-OS. Essa ação não pode ser desfeita.',
+         ],
+         'confirm_label' => 'Excluir',
+         'confirm_attrs' => ['form' => 'form-excluir-cobranca'],
+diff --git a/application/views/cobrancas/visualizarCobranca.php b/application/views/cobrancas/visualizarCobranca.php
+index 81835713..09b69f7f 100644
+--- a/application/views/cobrancas/visualizarCobranca.php
++++ b/application/views/cobrancas/visualizarCobranca.php
+@@ -134,7 +134,7 @@ $dados = $campos([
+     <?= component('modal-confirm', [
+         'id' => 'excluir-cobranca',
+         'title' => 'Excluir cobrança #' . $id . '?',
+-        'message' => 'A cobrança será cancelada no gateway e removida do Map-OS. Essa ação não pode ser desfeita.',
++        'message' => 'A cobrança será cancelada no gateway e removida do Daitech-OS. Essa ação não pode ser desfeita.',
+         'confirm_label' => 'Excluir',
+         'confirm_attrs' => ['form' => 'form-excluir-cobranca'],
+     ]) ?>
+diff --git a/application/views/componentes/catalogo.php b/application/views/componentes/catalogo.php
+index dfbf37fb..7cab7b35 100644
+--- a/application/views/componentes/catalogo.php
++++ b/application/views/componentes/catalogo.php
+@@ -39,7 +39,7 @@ $statusOs = [
+ <head>
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+-    <title>Componentes — Map-OS</title>
++    <title>Componentes — Daitech-OS</title>
+     <link rel="icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
+     <link rel="stylesheet" href="<?= e(base_url('assets/dist/app.css')) ?>">
+     <script src="<?= e(base_url('assets/js/tema.js')) ?>"></script>
+diff --git a/application/views/conecte/template.php b/application/views/conecte/template.php
+index a83ba8cf..cbd8af03 100644
+--- a/application/views/conecte/template.php
++++ b/application/views/conecte/template.php
+@@ -26,7 +26,7 @@
+  * @var string      $cliente_nome
+  */
+ // Mesmo nome das telas de entrada (views/entrada/inicio.php).
+-$nomeSistema = (string) ($this->config->item('app_name') ?: 'Map-OS');
++$nomeSistema = (string) ($this->config->item('app_name') ?: 'Daitech-OS');
+ $foco = 'focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-ring';
+ $atual = array_values(array_filter($menu, static fn ($item) => $item['atual']))[0]['label'] ?? 'Área do cliente';
+ ?><!doctype html>
+diff --git a/application/views/entrada/fim.php b/application/views/entrada/fim.php
+index fd95e686..4c17f868 100644
+--- a/application/views/entrada/fim.php
++++ b/application/views/entrada/fim.php
+@@ -10,7 +10,7 @@
+             <path d="M0 6 Q 7.5 0 15 6 T 30 6 T 45 6 T 60 6 T 75 6 T 90 6 T 105 6 T 120 6 T 135 6 T 150 6 T 165 6 T 180 6 T 195 6 T 210 6 T 225 6 T 240 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+         </svg>
+         <p class="mt-4 text-center text-caption text-on-dark-muted">
+-            <a href="https://github.com/RamonSilva20/mapos" class="rounded-xs underline-offset-4 hover:text-on-dark hover:underline focus-visible:outline-3 focus-visible:outline-ring"><?= e(date('Y') . ' © Ramon Silva · Map-OS') ?></a>
++            <?= e(date('Y') . ' © Douglas Inacio · Daitech-OS') ?>
+         </p>
+     </footer>
+ </body>
+diff --git a/application/views/entrada/inicio.php b/application/views/entrada/inicio.php
+index 009b1e5f..f8fa2f12 100644
+--- a/application/views/entrada/inicio.php
++++ b/application/views/entrada/inicio.php
+@@ -20,7 +20,7 @@
+  *
+  * @var array{titulo: string, secundaria?: array} $entrada
+  */
+-$nomeSistema = (string) ($this->config->item('app_name') ?: 'Map-OS');
++$nomeSistema = (string) ($this->config->item('app_name') ?: 'Daitech-OS');
+ ?><!doctype html>
+ <html lang="pt-br" class="scheme-dark">
+ <head>
+@@ -30,7 +30,7 @@ $nomeSistema = (string) ($this->config->item('app_name') ?: 'Map-OS');
+     <meta name="csrf-cookie-name" content="<?= e(config_item('csrf_cookie_name')) ?>">
+     <title><?= e($entrada['titulo'] . ' — ' . $nomeSistema) ?></title>
+     <link rel="icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
+-    <link rel="stylesheet" href="<?= e(base_url('assets/dist/app.css')) ?>">
++    <link rel="stylesheet" href="<?= e(base_url('assets/dist/app.css') . layoutVersaoAsset('assets/dist/app.css')) ?>">
+     <script type="module" src="<?= e(base_url('assets/js/app.js')) ?>"></script>
+ </head>
+ <body class="flex min-h-screen flex-col bg-canvas-dark bg-[url(../img/entrada/estrelas.svg)] font-sans text-on-dark antialiased">
+diff --git a/application/views/errors/html/_pagina.php b/application/views/errors/html/_pagina.php
+index b7dd36c8..d9c41996 100644
+--- a/application/views/errors/html/_pagina.php
++++ b/application/views/errors/html/_pagina.php
+@@ -25,7 +25,7 @@ $detalhes = $desenvolvimento ? ($detalhes ?? null) : null;
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+     <meta name="robots" content="noindex">
+-    <title><?= htmlspecialchars($titulo . ' — Map-OS', ENT_QUOTES, 'UTF-8') ?></title>
++    <title><?= htmlspecialchars($titulo . ' — Daitech-OS', ENT_QUOTES, 'UTF-8') ?></title>
+     <link rel="icon" type="image/png" href="<?= htmlspecialchars($raiz . 'assets/img/favicon.png', ENT_QUOTES, 'UTF-8') ?>">
+     <script src="<?= htmlspecialchars($raiz . 'assets/js/tema.js', ENT_QUOTES, 'UTF-8') ?>"></script>
+     <link rel="stylesheet" href="<?= htmlspecialchars($raiz . 'assets/dist/app.css', ENT_QUOTES, 'UTF-8') ?>">
+diff --git a/application/views/mapos/atualizacao.php b/application/views/mapos/atualizacao.php
+index 824bce9c..911a3b01 100644
+--- a/application/views/mapos/atualizacao.php
++++ b/application/views/mapos/atualizacao.php
+@@ -15,7 +15,7 @@ $notas = $release !== null ? trim($release['notas']) : '';
+ ?>
+ <div class="flex max-w-3xl flex-col gap-4 pt-2 pb-8">
+     <header>
+-        <h1 class="font-display text-heading-xl text-text">Atualizar o Map-OS</h1>
++        <h1 class="font-display text-heading-xl text-text">Atualizar o Daitech-OS</h1>
+         <p class="text-caption text-muted">Versão instalada: <?= e($versao_atual) ?></p>
+     </header>
+ 
+@@ -24,7 +24,7 @@ $notas = $release !== null ? trim($release['notas']) : '';
+     <?php } elseif ($release === null) { ?>
+         <?= component('empty-state', ['icon' => 'package', 'title' => 'Nenhuma versão publicada', 'message' => 'O GitHub ainda não tem uma release com tag para atualizar.']) ?>
+     <?php } elseif (! $tem_atualizacao) { ?>
+-        <?= component('empty-state', ['icon' => 'circle-check', 'title' => 'O Map-OS está atualizado', 'message' => 'A versão mais recente publicada é a ' . $release['versao'] . '.']) ?>
++        <?= component('empty-state', ['icon' => 'circle-check', 'title' => 'O Daitech-OS está atualizado', 'message' => 'A versão mais recente publicada é a ' . $release['versao'] . '.']) ?>
+     <?php } else { ?>
+         <section class="<?= e($caixa) ?>" aria-labelledby="secao-versao">
+             <div class="flex flex-wrap items-center gap-2">
+diff --git a/application/views/mapos/banco-desatualizado.php b/application/views/mapos/banco-desatualizado.php
+index 8bd67b1d..6cf76bf6 100644
+--- a/application/views/mapos/banco-desatualizado.php
++++ b/application/views/mapos/banco-desatualizado.php
+@@ -21,7 +21,7 @@ $titulo = 'Banco de dados desatualizado';
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+     <meta name="robots" content="noindex">
+-    <title><?= e($titulo) ?> — Map-OS</title>
++    <title><?= e($titulo) ?> — Daitech-OS</title>
+     <link rel="icon" type="image/png" href="<?= e($raiz . 'assets/img/favicon.png') ?>">
+     <script src="<?= e($raiz . 'assets/js/tema.js') ?>"></script>
+     <link rel="stylesheet" href="<?= e($raiz . 'assets/dist/app.css') ?>">
+diff --git a/application/views/mapos/configurar.php b/application/views/mapos/configurar.php
+index 39bac8ca..e7eb2df4 100644
+--- a/application/views/mapos/configurar.php
++++ b/application/views/mapos/configurar.php
+@@ -65,7 +65,7 @@ foreach ($campos as $nome => $def) {
+ <div class="flex max-w-4xl flex-col gap-4 pt-2 pb-8" <?= js_module('configuracoes/configurar') ?>>
+     <header>
+         <h1 class="font-display text-heading-xl text-text">Configurações</h1>
+-        <p class="text-caption text-muted">Preferências do Map-OS para todos os usuários.</p>
++        <p class="text-caption text-muted">Preferências do Daitech-OS para todos os usuários.</p>
+     </header>
+ 
+     <?= component('tabs', ['label' => 'Seções das configurações', 'items' => $abas]) ?>
+@@ -88,7 +88,7 @@ foreach ($campos as $nome => $def) {
+             </div>
+         </section>
+         <section class="<?= e($caixa) ?>" aria-labelledby="secao-mapos">
+-            <h2 id="secao-mapos" class="text-heading-sm text-text">Map-OS</h2>
++            <h2 id="secao-mapos" class="text-heading-sm text-text">Daitech-OS</h2>
+             <p class="mt-1 text-caption text-muted">Consulta a última release do GitHub, mostra o que mudou e, se você confirmar, substitui os arquivos depois de conferir o SHA256 do zip. O <code>.env</code> e os uploads não são alterados.</p>
+             <div class="mt-4">
+                 <?= component('button', ['label' => 'Verificar atualização', 'icon' => 'download', 'variant' => 'outline', 'href' => site_url('mapos/atualizacao')]) ?>
+diff --git a/application/views/mapos/painel.php b/application/views/mapos/painel.php
+index bf34b72c..7f9832d7 100644
+--- a/application/views/mapos/painel.php
++++ b/application/views/mapos/painel.php
+@@ -310,7 +310,7 @@ if ($pode['os']) {
+     </div>
+ 
+     <?php if ($pode === array_fill_keys(array_keys($pode), false)) { ?>
+-        <?= component('empty-state', ['title' => 'Bem-vindo ao Map-OS', 'message' => 'Seu usuário ainda não tem permissão para ver os módulos do painel. Fale com o administrador.', 'icon' => 'house']) ?>
++        <?= component('empty-state', ['title' => 'Bem-vindo ao Daitech-OS', 'message' => 'Seu usuário ainda não tem permissão para ver os módulos do painel. Fale com o administrador.', 'icon' => 'house']) ?>
+     <?php } ?>
+ </div>
+ 
+diff --git a/application/views/os/formulario.php b/application/views/os/formulario.php
+index f751b67f..4b534d04 100644
+--- a/application/views/os/formulario.php
++++ b/application/views/os/formulario.php
+@@ -172,6 +172,10 @@ $statusOpcoes = array_combine(array_keys(OS_STATUS_VARIANTES), array_keys(OS_STA
+             </div>
+         </section>
+ 
++        <?php if (function_exists('daitechAssinaturaValida') && is_file(APPPATH . 'views/os_extras/partes/campos.php')) {
++            // Módulos Daitech: equipamento, marca, modelo, série, senha, acessórios, defeito, laudo e assinatura num bloco só.
++            $this->load->view('os_extras/partes/campos');
++        } else { ?>
+         <section class="<?= e($caixa) ?>" aria-labelledby="secao-equipamento">
+             <h2 id="secao-equipamento" class="text-heading-sm text-text">Equipamento e serviço</h2>
+             <div class="<?= e($grade) ?>">
+@@ -181,6 +185,7 @@ $statusOpcoes = array_combine(array_keys(OS_STATUS_VARIANTES), array_keys(OS_STA
+                 <?= component('textarea', $texto('laudoTecnico', 'Laudo técnico', 'Diagnóstico e o que foi feito.')) ?>
+             </div>
+         </section>
++        <?php } ?>
+ 
+         <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+             <?= component('button', ['label' => 'Cancelar', 'variant' => 'ghost', 'href' => site_url('os')]) ?>
+diff --git a/application/views/os/imprimirOs.php b/application/views/os/imprimirOs.php
+index 92ca1f9e..8f74d334 100644
+--- a/application/views/os/imprimirOs.php
++++ b/application/views/os/imprimirOs.php
+@@ -94,6 +94,9 @@ $totalProdutos = 0;
+                     </div>
+                 </div>
+ 
++                <?php if (is_file(APPPATH . 'views/os_extras/partes/impressao-aparelho.php')) {
++                    $this->load->view('os_extras/partes/impressao-aparelho');
++                } // Módulos Daitech?>
+                 <?php if ($result->descricaoProduto) : ?>
+                     <div class="doc-subtitulo">DESCRIÇÃO</div>
+                     <div class="doc-dados">
+@@ -249,6 +252,9 @@ $totalProdutos = 0;
+                         </div>
+                     </div>
+                 <?php endif; ?>
++                <?php if (is_file(APPPATH . 'views/os_extras/partes/impressao-termos.php')) {
++                    $this->load->view('os_extras/partes/impressao-termos');
++                } // Módulos Daitech?>
+             </section>
+             <footer class="doc-rodape">
+                 <div class="flex justify-between">
+@@ -349,6 +355,9 @@ $totalProdutos = 0; ?>
+                         </div>
+                     </div>
+ 
++                    <?php if (is_file(APPPATH . 'views/os_extras/partes/impressao-aparelho.php')) {
++                        $this->load->view('os_extras/partes/impressao-aparelho');
++                    } // Módulos Daitech?>
+                     <?php if ($result->descricaoProduto) : ?>
+                         <div class="doc-subtitulo">DESCRIÇÃO</div>
+                         <div class="doc-dados">
+@@ -504,6 +513,9 @@ $totalProdutos = 0; ?>
+                             </div>
+                         </div>
+                     <?php endif; ?>
++                    <?php if (is_file(APPPATH . 'views/os_extras/partes/impressao-termos.php')) {
++                        $this->load->view('os_extras/partes/impressao-termos');
++                    } // Módulos Daitech?>
+                 </section>
+                 <footer class="doc-rodape">
+                     <div class="flex justify-between">
+diff --git a/application/views/os/visualizar.php b/application/views/os/visualizar.php
+index 145c1bdf..b4bc6d32 100644
+--- a/application/views/os/visualizar.php
++++ b/application/views/os/visualizar.php
+@@ -62,6 +62,10 @@ $textos = [
+             <?php } ?>
+             <?= component('button', ['label' => 'Imprimir', 'icon' => 'printer', 'variant' => 'ghost', 'href' => site_url('os/imprimir/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
+             <?= component('button', ['label' => 'Cupom 80mm', 'icon' => 'receipt', 'variant' => 'ghost', 'href' => site_url('os/imprimirTermica/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
++            <?php if (is_file(APPPATH . 'views/os_extras/partes/botoes.php')) {
++                // Módulos Daitech: cupom 2 vias.
++                $this->load->view('os_extras/partes/botoes', ['idOs' => $idOs]);
++            } ?>
+             <?php if ($os->garantias_id) { ?>
+                 <?= component('button', ['label' => 'Termo de garantia', 'icon' => 'file-text', 'variant' => 'ghost', 'href' => site_url('garantias/imprimirGarantiaOs/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
+             <?php } ?>
+@@ -128,6 +132,11 @@ $textos = [
+             </section>
+         </div>
+ 
++        <?php if (is_file(APPPATH . 'views/os_extras/partes/resumo.php')) {
++            // Módulos Daitech: marca, modelo, série, senha e assinatura.
++            $this->load->view('os_extras/partes/resumo');
++        } ?>
++
+         <div data-os-parte="desconto"><?php $this->load->view('os/partes/desconto'); ?></div>
+         <div data-os-parte="pix"><?php $this->load->view('os/partes/pix'); ?></div>
+     <?php } elseif ($aba === 'produtos' || $aba === 'servicos') { ?>
+diff --git a/application/views/relatorios/imprimir/partes/inicio.php b/application/views/relatorios/imprimir/partes/inicio.php
+index 1e513c7d..9bd3684c 100644
+--- a/application/views/relatorios/imprimir/partes/inicio.php
++++ b/application/views/relatorios/imprimir/partes/inicio.php
+@@ -13,7 +13,7 @@
+ 
+ <head>
+     <meta charset="UTF-8" />
+-    <title>Map-OS</title>
++    <title>Daitech-OS</title>
+     <link rel="stylesheet" href="<?= base_url() ?>assets/dist/pdf.css" />
+ </head>
+ 
+diff --git a/application/views/tema/conteudo.php b/application/views/tema/conteudo.php
+index bfb1b649..234f626b 100644
+--- a/application/views/tema/conteudo.php
++++ b/application/views/tema/conteudo.php
+@@ -49,6 +49,12 @@
+           <?php } ?>
+         </div>
+ 
++        <?php /* Módulos Daitech: ação secundária (outline) ao lado da principal, como o PDV em Vendas. */ ?>
++        <?php $acaoExtra = isset($this->data['topbar_acao_extra']) && is_array($this->data['topbar_acao_extra']) ? $this->data['topbar_acao_extra'] : null; ?>
++        <?php if ($acaoExtra !== null) { ?>
++          <?= component('button', $acaoExtra + ['variant' => 'outline', 'class' => 'max-sm:hidden']) ?>
++          <?= component('button', $acaoExtra + ['variant' => 'outline', 'icon_only' => true, 'class' => 'sm:hidden']) ?>
++        <?php } ?>
+         <?php if ($layout['acao'] !== null) { ?>
+           <?= component('button', $layout['acao'] + ['class' => 'max-sm:hidden']) ?>
+           <?= component('button', $layout['acao'] + ['icon_only' => true, 'class' => 'sm:hidden']) ?>
+@@ -85,7 +91,7 @@
+             <div class="my-1 border-t border-border sm:hidden" role="separator"></div>
+             <div class="px-3 py-2" role="group" aria-label="Cor do tema">
+               <p class="mb-2 text-xs font-medium text-muted">Cor do tema</p>
+-              <div class="flex items-center justify-between gap-1">
++              <div class="grid grid-cols-5 justify-items-center gap-1">
+                 <?php foreach (temaCoresRotulos() as $cor => $rotulo) { ?>
+                   <button type="button" data-tema-cor-escolher="<?= e($cor) ?>" aria-pressed="false" aria-label="<?= e($rotulo) ?>" title="<?= e($rotulo) ?>" class="group inline-flex size-9 items-center justify-center rounded-full border border-transparent hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-ring aria-pressed:border-text">
+                     <span data-tema="<?= e($cor) ?>" class="inline-flex size-6 items-center justify-center rounded-full bg-primary text-on-primary"><?= icon('check', ['class' => 'size-3.5 opacity-0 group-aria-pressed:opacity-100']) ?></span>
+diff --git a/application/views/tema/rodape.php b/application/views/tema/rodape.php
+index 535050f8..3b6feac3 100644
+--- a/application/views/tema/rodape.php
++++ b/application/views/tema/rodape.php
+@@ -13,15 +13,18 @@
+ ?>
+   <div class="v5-shell">
+     <footer class="px-4 py-6 text-center text-xs text-muted lg:px-6">
+-      <a href="https://github.com/RamonSilva20/mapos" target="_blank" rel="noopener" class="rounded-sm hover:text-text focus-visible:outline-2 focus-visible:outline-ring">
+-        <?= e(date('Y')) ?> &copy; Ramon Silva - Map-OS - Versão: <?= e($this->config->item('app_version')) ?>
+-      </a>
++      <p><?= e(date('Y')) ?> &copy; Douglas Inacio - Daitech-OS - Versão: <?= e($this->config->item('app_version')) ?></p>
+     </footer>
+   </div>
+ </div>
+ 
+ <?php $this->load->view('tema/busca'); ?>
+ 
++<?php if (is_file(APPPATH . 'views/notas/partes/chat.php')) {
++    // Módulos Daitech: chat flutuante do mural de notas.
++    $this->load->view('notas/partes/chat');
++} ?>
++
+ <div class="v5-shell">
+   <div data-toast-region class="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">
+     <?php foreach ($layout['flash'] as $mensagem) { ?>
+diff --git a/application/views/tema/topo.php b/application/views/tema/topo.php
+index 1d197666..2cfbcd93 100644
+--- a/application/views/tema/topo.php
++++ b/application/views/tema/topo.php
+@@ -17,7 +17,7 @@
+ <head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-  <title><?= e(layoutTitulo($layout['breadcrumb'], (string) ($configuration['app_name'] ?: 'Map-OS'))) ?></title>
++  <title><?= e(layoutTitulo($layout['breadcrumb'], (string) ($configuration['app_name'] ?: 'Daitech-OS'))) ?></title>
+   <meta name="csrf-token-name" content="<?= e(config_item('csrf_token_name')) ?>">
+   <meta name="csrf-cookie-name" content="<?= e(config_item('csrf_cookie_name')) ?>">
+   <meta name="base-url" content="<?= e(base_url()) ?>">
+@@ -25,7 +25,7 @@
+   <meta name="csp-nonce" content="<?= e(segurancaNonceAtual()) ?>">
+   <?php } ?>
+   <link rel="shortcut icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
+-  <script src="<?= e(base_url('assets/js/tema.js')) ?>"></script>
++  <script src="<?= e(base_url('assets/js/tema.js') . layoutVersaoAsset('assets/js/tema.js')) ?>"></script>
+   <?php foreach ($layout['assets']['css'] as $arquivo) { ?>
+   <link rel="stylesheet" href="<?= e(layoutUrlAsset($arquivo, base_url())) ?>">
+   <?php } ?>
+diff --git a/application/views/vendas/partes/totais.php b/application/views/vendas/partes/totais.php
+index 082d3949..8a4c31de 100644
+--- a/application/views/vendas/partes/totais.php
++++ b/application/views/vendas/partes/totais.php
+@@ -22,8 +22,11 @@ $descricaoDesconto = match (true) {
+     default => 'Sem desconto',
+ };
+ ?>
+-<div class="grid gap-4 sm:grid-cols-3">
++<div class="grid gap-4 <?= $totais['servicos'] > 0 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3' ?>">
+     <?= component('kpi-card', ['label' => 'Produtos', 'value' => dinheiro($totais['produtos']), 'icon' => 'package', 'caption' => $itens === 0 ? 'Nenhum item' : $itens . ' ' . ($itens === 1 ? 'item' : 'itens')]) ?>
++    <?php if ($totais['servicos'] > 0) { ?>
++        <?= component('kpi-card', ['label' => 'Serviços e avulsos', 'value' => dinheiro($totais['servicos']), 'icon' => 'wrench', 'caption' => 'Do PDV ou do orçamento']) ?>
++    <?php } ?>
+     <?= component('kpi-card', ['label' => 'Desconto', 'value' => dinheiro($totais['desconto']), 'icon' => 'percent', 'caption' => $descricaoDesconto]) ?>
+     <?= component('kpi-card', ['label' => 'Total', 'value' => dinheiro($totais['total']), 'icon' => 'circle-dollar-sign', 'caption' => 'Calculado pelos produtos']) ?>
+ </div>
+diff --git a/application/views/vendas/vendas.php b/application/views/vendas/vendas.php
+index 3d0a8aa4..0ed12c0b 100644
+--- a/application/views/vendas/vendas.php
++++ b/application/views/vendas/vendas.php
+@@ -74,9 +74,11 @@ $resumo = ($total === 1 ? '1 venda' : number_format($total, 0, ',', '.') . ' ven
+     . ($temFiltro ? ($total === 1 ? ' encontrada' : ' encontradas') . ' com os filtros' : '');
+ ?>
+ <div class="flex flex-col gap-4 pt-2 pb-8">
+-    <header>
+-        <h1 class="font-display text-heading-xl text-text">Vendas</h1>
+-        <p class="text-caption text-muted" aria-live="polite"><?= e($resumo) ?></p>
++    <header class="flex flex-wrap items-start justify-between gap-3">
++        <div>
++            <h1 class="font-display text-heading-xl text-text">Vendas</h1>
++            <p class="text-caption text-muted" aria-live="polite"><?= e($resumo) ?></p>
++        </div>
+     </header>
+ 
+     <form method="get" action="<?= e(site_url('vendas')) ?>" role="search" aria-label="Filtrar vendas" class="grid items-end gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_12rem_10rem_10rem_auto]">
+diff --git a/application/views/vendas/visualizar.php b/application/views/vendas/visualizar.php
+index a26bd16f..9803977a 100644
+--- a/application/views/vendas/visualizar.php
++++ b/application/views/vendas/visualizar.php
+@@ -183,6 +183,11 @@ $textos = $campos([
+         <div data-os-parte="produtos"><?php $this->load->view('vendas/partes/produtos'); ?></div>
+     </section>
+ 
++    <?php if (is_file(APPPATH . 'views/pdv/partes/extras-da-venda.php')) {
++        // Módulos Daitech: serviços e itens avulsos do PDV e dos orçamentos.
++        $this->load->view('pdv/partes/extras-da-venda', ['idVenda' => $idVenda]);
++    } ?>
++
+     <div data-os-parte="desconto"><?php $this->load->view('vendas/partes/desconto'); ?></div>
+     <div data-os-parte="pix"><?php $this->load->view('vendas/partes/pix'); ?></div>
+ </div>
+diff --git a/assets/js/lib/icone.js b/assets/js/lib/icone.js
+index 5bf38000..b63f093a 100644
+--- a/assets/js/lib/icone.js
++++ b/assets/js/lib/icone.js
+@@ -12,6 +12,17 @@ const SVG = 'http://www.w3.org/2000/svg';
+ 
+ export const URL_SPRITE = new URL('../../vendor/lucide/sprite.svg', import.meta.url).href;
+ 
++/**
++ * URL do sprite com a versão que o servidor pôs nos ícones da página
++ * (?v=..., icone_helper.php), para usar o mesmo arquivo em cache. Sem ícone na
++ * página, a URL sem versão.
++ */
++export function urlDoSprite(doc = document) {
++    const href = doc.querySelector?.('svg use[href*="lucide/sprite.svg"]')?.getAttribute('href');
++
++    return href ? href.split('#')[0] : URL_SPRITE;
++}
++
+ export function criarIcone(nome, classe = '', doc = document) {
+     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(nome)) {
+         throw new Error(`Nome de ícone inválido: ${nome}`);
+@@ -36,7 +47,7 @@ export function criarIcone(nome, classe = '', doc = document) {
+     }
+ 
+     const uso = doc.createElementNS(SVG, 'use');
+-    uso.setAttribute('href', `${URL_SPRITE}#${nome}`);
++    uso.setAttribute('href', `${urlDoSprite(doc)}#${nome}`);
+     svg.appendChild(uso);
+ 
+     return svg;
+diff --git a/assets/js/lib/tema.js b/assets/js/lib/tema.js
+index 20264e25..94144cd4 100644
+--- a/assets/js/lib/tema.js
++++ b/assets/js/lib/tema.js
+@@ -29,7 +29,7 @@ export function salvarModo(modo, armazenamento = globalThis.localStorage) {
+ 
+ // Cor do tema (#3032): padrao (laranja), azul, verde, violeta ou grafite. Vale
+ // para o atributo data-tema do <html>; o padrão não leva atributo.
+-export const CORES = ['padrao', 'azul', 'verde', 'violeta', 'grafite'];
++export const CORES = ['padrao', 'azul', 'verde', 'violeta', 'rosa', 'ciano', 'ambar', 'indigo', 'grafite'];
+ export const CHAVE_COR = 'mapos:tema-cor';
+ 
+ export function aplicarCor(html, cor) {
+diff --git a/assets/js/modules/painel/painel.js b/assets/js/modules/painel/painel.js
+index d772565e..a8d9bbd3 100644
+--- a/assets/js/modules/painel/painel.js
++++ b/assets/js/modules/painel/painel.js
+@@ -201,6 +201,11 @@ async function iniciarAgenda(raiz, { doc, get }) {
+         },
+         eventClick: (info) => {
+             info.jsEvent.preventDefault();
++            // Módulos Daitech: a visita da agenda externa abre a tela da agenda.
++            if (info.event.extendedProps.tipo === 'agendamento') {
++                globalThis.location.href = info.event.extendedProps.url;
++                return;
++            }
+             if (modal) {
+                 abrirOs(modal, info.event);
+             }
+diff --git a/assets/js/tema.js b/assets/js/tema.js
+index 14f0349d..339de7fe 100644
+--- a/assets/js/tema.js
++++ b/assets/js/tema.js
+@@ -48,7 +48,7 @@
+   // localStorage só entra quando a pessoa não tem preferência gravada
+   // (data-tema-cor-usuario) e a tela não fixa a marca (data-tema-fixo, área
+   // do cliente). Allow-list: o padrão (laranja) não leva atributo.
+-  var CORES = ['azul', 'verde', 'violeta', 'grafite'];
++  var CORES = ['azul', 'verde', 'violeta', 'rosa', 'ciano', 'ambar', 'indigo', 'grafite'];
+   if (!html.hasAttribute('data-tema-cor-usuario') && !html.hasAttribute('data-tema-fixo')) {
+     var corLocal = ler('mapos:tema-cor');
+     if (CORES.indexOf(corLocal) !== -1) {
+diff --git a/assets/src/app.css b/assets/src/app.css
+index 3c09c3f7..e4849f2e 100644
+--- a/assets/src/app.css
++++ b/assets/src/app.css
+@@ -20,6 +20,7 @@
+ /* As impressões e os PDFs têm o CSS próprio (imprimir.css e pdf.css). */
+ @source not "../../application/views/{os,vendas,garantias,conecte}/imprimir*.php";
+ @source not "../../application/views/relatorios/imprimir/**/*.php";
++@source not "../../application/views/{pdv,orcamentos,os_extras}/imprimir*.php";
+ /* Classes montadas no JS (ex.: o toast de assets/js/lib/toast.js). */
+ @source "../js/lib/**/*.js";
+ @source "../js/modules/**/*.js";
+diff --git a/assets/src/icones.json b/assets/src/icones.json
+index b4030453..d7441251 100644
+--- a/assets/src/icones.json
++++ b/assets/src/icones.json
+@@ -2,6 +2,9 @@
+   "archive",
+   "banknote",
+   "barcode",
++  "calculator",
++  "calendar-days",
++  "calendar-plus",
+   "camera",
+   "chart-column",
+   "chart-pie",
+@@ -13,8 +16,11 @@
+   "circle-check",
+   "circle-dollar-sign",
+   "circle-user",
++  "clipboard-list",
++  "columns-3",
+   "copy",
+   "download",
++  "eraser",
+   "external-link",
+   "eye",
+   "eye-off",
+@@ -28,35 +34,47 @@
+   "image",
+   "info",
+   "key-round",
++  "list-checks",
++  "lock-keyhole",
+   "log-in",
+   "log-out",
+   "mail",
++  "map-pin",
+   "menu",
+   "message-circle",
++  "message-square",
++  "minus",
+   "monitor",
+   "moon",
+   "package",
+   "package-plus",
+   "paperclip",
++  "pen-line",
+   "pencil",
+   "percent",
+   "plus",
+   "printer",
+   "qr-code",
+   "receipt",
++  "refresh-cw",
+   "save",
++  "scan-barcode",
+   "search",
+   "search-x",
++  "send",
+   "settings",
+   "shield-check",
+   "shield-off",
+   "shopping-basket",
+   "shopping-cart",
++  "smartphone",
+   "sun",
++  "tag",
+   "trash-2",
+   "triangle-alert",
+   "upload",
+   "user",
++  "user-plus",
+   "users",
+   "wrench",
+   "x"
+diff --git a/assets/src/imprimir.css b/assets/src/imprimir.css
+index 999f07ca..c165358e 100644
+--- a/assets/src/imprimir.css
++++ b/assets/src/imprimir.css
+@@ -16,6 +16,11 @@
+ @source "../../application/views/garantias/imprimir*.php";
+ @source "../../application/views/conecte/imprimir*.php";
+ @source "../../application/views/conecte/partes/impressao*.php";
++/* Módulos Daitech */
++@source "../../application/views/pdv/imprimir*.php";
++@source "../../application/views/orcamentos/imprimir*.php";
++@source "../../application/views/os_extras/imprimir*.php";
++@source "../../application/views/os_extras/partes/impressao*.php";
+ 
+ /*
+  * Documento A4 (OS, venda, garantia). Em tela é uma folha sobre fundo cinza;
+diff --git a/assets/src/tokens.css b/assets/src/tokens.css
+index 86082c85..b55fb094 100644
+--- a/assets/src/tokens.css
++++ b/assets/src/tokens.css
+@@ -511,6 +511,131 @@
+     --mapos-primary-tint: #332246;
+   }
+ 
++  /* Módulos Daitech: temas Rosa, Ciano, Âmbar e Índigo (valores de scripts/contraste-temas.mjs). */
++  :root[data-tema="rosa"]:not(.dark),
++  :root:not(.dark) [data-tema="rosa"] {
++    --mapos-primary: #be185d;
++    --mapos-primary-hover: #c81e66;
++    --mapos-primary-pressed: #9d174d;
++    --mapos-on-primary: #ffffff;
++    --mapos-primary-strong: #be185d;
++    --mapos-primary-tint: #f9e8ef;
++
++    --mapos-sidebar-bg: #4a0d2b;
++    --mapos-sidebar-hover: #63123a;
++    --mapos-sidebar-text: #fff0f6;
++    --mapos-sidebar-muted: #f0b6d0;
++    --mapos-sidebar-border: #63123a;
++    --mapos-sidebar-active-bg: #be185d;
++    --mapos-sidebar-active-text: #ffffff;
++    --mapos-sidebar-accent: #f9a8d4;
++    --mapos-sidebar-accent-ink: #1f1633;
++    --mapos-sidebar-ring: #93c5fd;
++  }
++
++  :root[data-tema="ciano"]:not(.dark),
++  :root:not(.dark) [data-tema="ciano"] {
++    --mapos-primary: #0e7490;
++    --mapos-primary-hover: #0c6680;
++    --mapos-primary-pressed: #155e75;
++    --mapos-on-primary: #ffffff;
++    --mapos-primary-strong: #0e7490;
++    --mapos-primary-tint: #e7f1f4;
++
++    --mapos-sidebar-bg: #083344;
++    --mapos-sidebar-hover: #0b4458;
++    --mapos-sidebar-text: #ecfeff;
++    --mapos-sidebar-muted: #a5dbe6;
++    --mapos-sidebar-border: #0b4458;
++    --mapos-sidebar-active-bg: #0e7490;
++    --mapos-sidebar-active-text: #ffffff;
++    --mapos-sidebar-accent: #67e8f9;
++    --mapos-sidebar-accent-ink: #1f1633;
++    --mapos-sidebar-ring: #93c5fd;
++  }
++
++  :root[data-tema="ambar"]:not(.dark),
++  :root:not(.dark) [data-tema="ambar"] {
++    --mapos-primary: #f59e0b;
++    --mapos-primary-hover: #f7ac2e;
++    --mapos-primary-pressed: #d97706;
++    --mapos-on-primary: #1f1633;
++    --mapos-primary-strong: #92400e;
++    --mapos-primary-tint: #fef3e2;
++
++    --mapos-sidebar-bg: #3b2506;
++    --mapos-sidebar-hover: #52340a;
++    --mapos-sidebar-text: #fff8eb;
++    --mapos-sidebar-muted: #e9cf9f;
++    --mapos-sidebar-border: #52340a;
++    --mapos-sidebar-active-bg: #f59e0b;
++    --mapos-sidebar-active-text: #1f1633;
++    --mapos-sidebar-accent: #fbbf24;
++    --mapos-sidebar-accent-ink: #1f1633;
++    --mapos-sidebar-ring: #93c5fd;
++  }
++
++  :root[data-tema="indigo"]:not(.dark),
++  :root:not(.dark) [data-tema="indigo"] {
++    --mapos-primary: #4338ca;
++    --mapos-primary-hover: #4f46e5;
++    --mapos-primary-pressed: #3730a3;
++    --mapos-on-primary: #ffffff;
++    --mapos-primary-strong: #4338ca;
++    --mapos-primary-tint: #ecebfa;
++
++    --mapos-sidebar-bg: #1e1b4b;
++    --mapos-sidebar-hover: #2b2770;
++    --mapos-sidebar-text: #eef2ff;
++    --mapos-sidebar-muted: #c3c6f0;
++    --mapos-sidebar-border: #2b2770;
++    --mapos-sidebar-active-bg: #4f46e5;
++    --mapos-sidebar-active-text: #ffffff;
++    --mapos-sidebar-accent: #a5b4fc;
++    --mapos-sidebar-accent-ink: #1f1633;
++    --mapos-sidebar-ring: #93c5fd;
++  }
++
++  :root.dark[data-tema="rosa"],
++  .dark [data-tema="rosa"] {
++    --mapos-primary: #f472b6;
++    --mapos-primary-hover: #f9a8d4;
++    --mapos-primary-pressed: #ec4899;
++    --mapos-on-primary: #1f1633;
++    --mapos-primary-strong: #f9a8d4;
++    --mapos-primary-tint: #391f3b;
++  }
++
++  :root.dark[data-tema="ciano"],
++  .dark [data-tema="ciano"] {
++    --mapos-primary: #22d3ee;
++    --mapos-primary-hover: #67e8f9;
++    --mapos-primary-pressed: #06b6d4;
++    --mapos-on-primary: #1f1633;
++    --mapos-primary-strong: #67e8f9;
++    --mapos-primary-tint: #172e43;
++  }
++
++  :root.dark[data-tema="ambar"],
++  .dark [data-tema="ambar"] {
++    --mapos-primary: #fbbf24;
++    --mapos-primary-hover: #fcd34d;
++    --mapos-primary-pressed: #f59e0b;
++    --mapos-on-primary: #1f1633;
++    --mapos-primary-strong: #fcd34d;
++    --mapos-primary-tint: #3a2b23;
++  }
++
++  :root.dark[data-tema="indigo"],
++  .dark [data-tema="indigo"] {
++    --mapos-primary: #818cf8;
++    --mapos-primary-hover: #a5b4fc;
++    --mapos-primary-pressed: #7c86f5;
++    --mapos-on-primary: #1f1633;
++    --mapos-primary-strong: #a5b4fc;
++    --mapos-primary-tint: #262345;
++  }
++
+   /* Amostra do tema padrão (Configurações): sempre o laranja, qualquer que seja o tema ativo. */
+   [data-tema="padrao"] {
+     --mapos-primary: #f37338;
+diff --git a/index.php b/index.php
+index 7510ea9a..a1190d3b 100755
+--- a/index.php
++++ b/index.php
+@@ -61,7 +61,7 @@ if (file_exists($composerAutoloadFile)) {
+ } else {
+     // Sem as dependências nada sobe. Mensagem curta e sem caminhos do servidor (no navegador, só o
+     // que o administrador precisa para corrigir); no terminal sai no stderr com código de erro.
+-    $mensagem = 'O Map-OS não encontrou as dependências (pasta application/vendor). Instale a versão completa da release '
++    $mensagem = 'O Daitech-OS não encontrou as dependências (pasta application/vendor). Instale a versão completa da release '
+         . 'ou, a partir do código-fonte, execute "composer install --no-dev" na pasta do projeto.';
+     if (PHP_SAPI === 'cli') {
+         fwrite(STDERR, $mensagem . PHP_EOL);
+@@ -70,7 +70,7 @@ if (file_exists($composerAutoloadFile)) {
+     http_response_code(503);
+     header('Content-Type: text/html; charset=utf-8');
+     header('Cache-Control: no-store');
+-    exit('<!DOCTYPE html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Map-OS: dependências ausentes</title></head>'
++    exit('<!DOCTYPE html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daitech-OS: dependências ausentes</title></head>'
+         . '<body style="font-family:sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem;line-height:1.5">'
+         . '<h1 style="font-size:1.25rem">Dependências ausentes</h1><p>' . htmlspecialchars($mensagem, ENT_QUOTES) . '</p></body></html>');
+ }
+diff --git a/install/assets/css/instalador.css b/install/assets/css/instalador.css
+index 1b6b0b02..1016fa31 100644
+--- a/install/assets/css/instalador.css
++++ b/install/assets/css/instalador.css
+@@ -1,2 +1,2 @@
+ /*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
+-@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-border-style:solid;--tw-font-weight:initial;--tw-outline-style:solid}}}@layer theme{:root,:host{--font-sans:"Rubik", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;--font-mono:Monaco, Menlo, "Ubuntu Mono", monospace;--spacing:.25rem;--container-3xl:48rem;--text-xs:.75rem;--text-xs--line-height:calc(1 / .75);--text-sm:.875rem;--text-sm--line-height:calc(1.25 / .875);--text-xl:1.25rem;--text-xl--line-height:calc(1.75 / 1.25);--font-weight-medium:500;--font-weight-semibold:600;--font-weight-bold:700;--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:10px;--radius-xl:12px;--default-font-family:"Rubik", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;--default-mono-font-family:Monaco, Menlo, "Ubuntu Mono", monospace;--color-bg:var(--mapos-bg);--color-surface:var(--mapos-surface);--color-surface-subtle:var(--mapos-surface-subtle);--color-text:var(--mapos-text);--color-muted:var(--mapos-muted);--color-border:var(--mapos-border);--color-input:var(--mapos-input);--color-field:var(--mapos-field);--color-disabled:var(--mapos-disabled);--color-disabled-bg:var(--mapos-disabled-bg);--color-primary:var(--mapos-primary);--color-primary-hover:var(--mapos-primary-hover);--color-primary-pressed:var(--mapos-primary-pressed);--color-on-primary:var(--mapos-on-primary);--color-ink:#1f1633;--color-primary-tint:var(--mapos-primary-tint);--color-primary-strong:var(--mapos-primary-strong);--color-sidebar:var(--mapos-sidebar-bg);--color-ring:var(--mapos-ring);--color-success:#15803d;--color-success-ink:var(--mapos-success-ink);--color-success-soft:var(--mapos-success-soft);--color-warning:#a16207;--color-warning-ink:var(--mapos-warning-ink);--color-warning-soft:var(--mapos-warning-soft);--color-danger:#dc2626;--color-danger-ink:var(--mapos-danger-ink);--color-danger-soft:var(--mapos-danger-soft);--color-info:#0369a1;--color-info-ink:var(--mapos-info-ink);--color-info-soft:var(--mapos-info-soft);--color-progress:#6a5fc1;--color-progress-ink:var(--mapos-progress-ink);--color-progress-soft:var(--mapos-progress-soft);--color-neutral:#79628c;--color-neutral-ink:var(--mapos-neutral-ink);--color-neutral-soft:var(--mapos-neutral-soft);--color-canvas-dark:#1f1633;--color-night:#150f23;--color-on-dark:#fff;--color-on-dark-muted:#ffffffb8;--color-on-dark-faint:#ffffff2e;--color-hairline-violet:#362d59;--color-hairline-cool:#cfcfdb;--color-hairline-cloud:#e5e7eb;--color-press-light:#f0f0f0;--color-ink-press:#1a1a1a;--color-accent-lime:#c2ef4e;--color-accent-pink:#fa7faa;--color-accent-violet:#6a5fc1;--color-accent-violet-deep:#422082;--color-accent-violet-mid:#79628c;--color-backdrop:#150f238c;--font-display:"Space Grotesk", "Rubik", system-ui, sans-serif;--text-display-hero:5.5rem;--text-display-hero--line-height:1.2;--text-display-hero--font-weight:700;--text-display-hero-sm:3rem;--text-display-hero-sm--line-height:1.2;--text-display-hero-sm--font-weight:700;--text-display-large:3.75rem;--text-display-large--line-height:1.1;--text-display-large--font-weight:500;--text-heading-xl:1.875rem;--text-heading-xl--line-height:1.2;--text-heading-xl--font-weight:500;--text-heading-lg:1.6875rem;--text-heading-lg--line-height:1.25;--text-heading-lg--font-weight:500;--text-heading-md:1.5rem;--text-heading-md--line-height:1.25;--text-heading-md--font-weight:500;--text-heading-sm:1.25rem;--text-heading-sm--line-height:1.25;--text-heading-sm--font-weight:600;--text-body-lg:1rem;--text-body-lg--line-height:2;--text-body-lg--font-weight:400;--text-body-strong:1rem;--text-body-strong--line-height:1.5;--text-body-strong--font-weight:600;--text-body-md:1rem;--text-body-md--line-height:1.5;--text-body-md--font-weight:400;--text-label-md:1rem;--text-label-md--line-height:1.5;--text-label-md--font-weight:500;--text-eyebrow:.9375rem;--text-eyebrow--line-height:1.4;--text-eyebrow--font-weight:500;--text-eyebrow--letter-spacing:.2px;--text-button-cap:.875rem;--text-button-cap--line-height:1.14;--text-button-cap--font-weight:700;--text-button-cap--letter-spacing:.2px;--text-button-cap-light:.875rem;--text-button-cap-light--line-height:1.29;--text-button-cap-light--font-weight:500;--text-button-cap-light--letter-spacing:.2px;--text-caption:.875rem;--text-caption--line-height:1.43;--text-caption--font-weight:400;--text-micro-cap:.625rem;--text-micro-cap--line-height:1.8;--text-micro-cap--font-weight:600;--text-micro-cap--letter-spacing:.25px;--text-code:1rem;--text-code--line-height:1.5;--text-code--font-weight:400;--radius-xxl:18px;--radius-control:8px;--radius-card:12px;--radius-pill:9999px;--shadow-elev-1:0 2px 8px 0 #00000014;--shadow-elev-2:0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a;--shadow-elev-3:0 0 8px 6px #150f23;--shadow-elev-4:0 .5rem 1.5rem #0000002e;--shadow-field-focus:inset 0 2px 10px #00000026;--shadow-card:var(--mapos-shadow-card);--shadow-overlay:var(--mapos-shadow-overlay);--spacing-sidebar:15.75rem;--spacing-sidebar-recolhida:4.75rem;--spacing-topbar:4rem}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring:where(:not(iframe)){outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}:root{color-scheme:light;--mapos-bg:#fff;--mapos-surface:#fff;--mapos-surface-subtle:#f6f5f9;--mapos-text:#1f1633;--mapos-muted:#5b5470;--mapos-border:#e5e7eb;--mapos-input:#8a849c;--mapos-field:#fff;--mapos-disabled:#8a849c;--mapos-disabled-bg:#e5e7eb;--mapos-primary-tint:#feeee7;--mapos-primary-strong:#b34d1d;--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-sidebar-bg:var(--mapos-surface);--mapos-sidebar-hover:var(--mapos-surface-subtle);--mapos-sidebar-text:var(--mapos-text);--mapos-sidebar-muted:var(--mapos-muted);--mapos-sidebar-border:var(--mapos-border);--mapos-sidebar-active-bg:var(--mapos-primary-tint);--mapos-sidebar-active-text:var(--mapos-primary-strong);--mapos-sidebar-accent:var(--mapos-primary);--mapos-sidebar-accent-ink:var(--mapos-on-primary);--mapos-sidebar-ring:#3b82f6;--mapos-ring:#3b82f6;--mapos-success-ink:#166534;--mapos-success-soft:#e3f0e8;--mapos-warning-ink:#854d0e;--mapos-warning-soft:#f4ece1;--mapos-danger-ink:#b91c1c;--mapos-danger-soft:#fbe5e5;--mapos-info-ink:#075985;--mapos-info-soft:#e1edf4;--mapos-progress-ink:#4a3f9e;--mapos-progress-soft:#edecf8;--mapos-neutral-ink:#4b4560;--mapos-neutral-soft:#efecf1;--mapos-shadow-card:none;--mapos-shadow-overlay:0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a}.dark,.superficie-entrada{color-scheme:dark;--mapos-bg:#1f1633;--mapos-surface:#150f23;--mapos-surface-subtle:#1b1430;--mapos-text:#fff;--mapos-muted:#ffffffb8;--mapos-border:#362d59;--mapos-input:#756d8a;--mapos-field:#1f1633;--mapos-disabled:#ffffff73;--mapos-disabled-bg:#ffffff14;--mapos-primary-tint:#391f26;--mapos-primary-strong:#f37338;--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-sidebar-bg:var(--mapos-surface);--mapos-sidebar-hover:var(--mapos-surface-subtle);--mapos-sidebar-text:var(--mapos-text);--mapos-sidebar-muted:var(--mapos-muted);--mapos-sidebar-border:var(--mapos-border);--mapos-sidebar-active-bg:var(--mapos-primary-tint);--mapos-sidebar-active-text:var(--mapos-primary-strong);--mapos-sidebar-accent:var(--mapos-primary);--mapos-sidebar-accent-ink:var(--mapos-on-primary);--mapos-sidebar-ring:#3b82f6;--mapos-ring:#3b82f6;--mapos-success-ink:#4ade80;--mapos-success-soft:#1d3032;--mapos-warning-ink:#facc15;--mapos-warning-soft:#3a2d21;--mapos-danger-ink:#f87171;--mapos-danger-soft:#391f2f;--mapos-info-ink:#38bdf8;--mapos-info-soft:#1b2b45;--mapos-progress-ink:#b8b0f0;--mapos-progress-soft:#2b244c;--mapos-neutral-ink:#d6cfe0;--mapos-neutral-soft:#2f253e;--mapos-shadow-card:none;--mapos-shadow-overlay:0 10px 30px #0000008c}.superficie-entrada :where(input,select,textarea){color-scheme:light;--mapos-text:#1f1633;--mapos-muted:#5b5470;--mapos-input:#8a849c;--mapos-field:#fff;--mapos-surface-subtle:#f6f5f9;--mapos-disabled:#8a849c;--mapos-disabled-bg:#e5e7eb}.v5-sidebar{--mapos-surface:var(--mapos-sidebar-bg);--mapos-surface-subtle:var(--mapos-sidebar-hover);--mapos-text:var(--mapos-sidebar-text);--mapos-muted:var(--mapos-sidebar-muted);--mapos-border:var(--mapos-sidebar-border);--mapos-primary-tint:var(--mapos-sidebar-active-bg);--mapos-primary-strong:var(--mapos-sidebar-active-text);--mapos-primary:var(--mapos-sidebar-accent);--mapos-on-primary:var(--mapos-sidebar-accent-ink);--mapos-ring:var(--mapos-sidebar-ring)}:root[data-tema=azul]:not(.dark),:root:not(.dark) [data-tema=azul]{--mapos-primary:#2240b8;--mapos-primary-hover:#2b4fd6;--mapos-primary-pressed:#1a3190;--mapos-on-primary:#fff;--mapos-primary-strong:#2240b8;--mapos-primary-tint:#e9ecf8;--mapos-sidebar-bg:#121a45;--mapos-sidebar-hover:#1c2762;--mapos-sidebar-text:#eef1ff;--mapos-sidebar-muted:#b7c0ea;--mapos-sidebar-border:#1c2762;--mapos-sidebar-active-bg:#2b4fd6;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#a3b4ff;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=verde]:not(.dark),:root:not(.dark) [data-tema=verde]{--mapos-primary:#0b6b60;--mapos-primary-hover:#0f7a6e;--mapos-primary-pressed:#08524a;--mapos-on-primary:#fff;--mapos-primary-strong:#0b6b60;--mapos-primary-tint:#e7f0ef;--mapos-sidebar-bg:#0a3a35;--mapos-sidebar-hover:#0f4d46;--mapos-sidebar-text:#e8fbf8;--mapos-sidebar-muted:#a9d9d2;--mapos-sidebar-border:#0f4d46;--mapos-sidebar-active-bg:#0f7a6e;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#5eead4;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=violeta]:not(.dark),:root:not(.dark) [data-tema=violeta]{--mapos-primary:#7424c4;--mapos-primary-hover:#8230d6;--mapos-primary-pressed:#5f1da3;--mapos-on-primary:#fff;--mapos-primary-strong:#7424c4;--mapos-primary-tint:#f1e9f9;--mapos-sidebar-bg:#2b1257;--mapos-sidebar-hover:#3d1c78;--mapos-sidebar-text:#f6eeff;--mapos-sidebar-muted:#cdb6ee;--mapos-sidebar-border:#3d1c78;--mapos-sidebar-active-bg:#7424c4;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#d5a6ff;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=grafite]:not(.dark),:root:not(.dark) [data-tema=grafite]{--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-primary-strong:#b34d1d;--mapos-primary-tint:#feeee7;--mapos-sidebar-bg:#1c1c1f;--mapos-sidebar-hover:#2a2a2e;--mapos-sidebar-text:#f4f4f5;--mapos-sidebar-muted:#b4b4bc;--mapos-sidebar-border:#2a2a2e;--mapos-sidebar-active-bg:#f37338;--mapos-sidebar-active-text:#1f1633;--mapos-sidebar-accent:#f37338;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root.dark[data-tema=azul],.dark [data-tema=azul]{--mapos-primary:#7f98ff;--mapos-primary-hover:#93a9ff;--mapos-primary-pressed:#6a85f2;--mapos-on-primary:#1f1633;--mapos-primary-strong:#a3b4ff;--mapos-primary-tint:#262546}:root.dark[data-tema=verde],.dark [data-tema=verde]{--mapos-primary:#2dd4bf;--mapos-primary-hover:#5eead4;--mapos-primary-pressed:#19b8a5;--mapos-on-primary:#1f1633;--mapos-primary-strong:#5eead4;--mapos-primary-tint:#192f3c}:root.dark[data-tema=violeta],.dark [data-tema=violeta]{--mapos-primary:#cf86ff;--mapos-primary-hover:#da9dff;--mapos-primary-pressed:#bd6ff0;--mapos-on-primary:#1f1633;--mapos-primary-strong:#dcaaff;--mapos-primary-tint:#332246}[data-tema=padrao]{--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633}:root.dark[data-tema=grafite],.dark [data-tema=grafite]{--mapos-bg:#171717;--mapos-surface:#1f1f1f;--mapos-surface-subtle:#27272a;--mapos-text:#fafafa;--mapos-muted:#a1a1aa;--mapos-border:#3f3f46;--mapos-input:#74747d;--mapos-field:#27272a;--mapos-primary:#f97316;--mapos-primary-hover:#fb8c3a;--mapos-primary-pressed:#ea670c;--mapos-on-primary:#171717;--mapos-primary-strong:#fb923c;--mapos-primary-tint:#2a2015;--mapos-success-soft:#253a2d;--mapos-warning-soft:#3e371e;--mapos-danger-soft:#3d2a2a;--mapos-info-soft:#23353d;--mapos-progress-soft:#34333c;--mapos-neutral-soft:#39383a}:root[data-tema] .superficie-entrada{--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-primary-strong:#f37338;--mapos-primary-tint:#391f26}body{background-color:var(--mapos-bg);color:var(--mapos-text)}}@layer utilities{.sr-only{clip-path:inset(50%);white-space:nowrap;border-width:0;width:1px;height:1px;margin:-1px;padding:0;position:absolute;overflow:hidden}.mx-auto{margin-inline:auto}.mb-1{margin-bottom:var(--spacing)}.mb-2{margin-bottom:calc(var(--spacing) * 2)}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline-flex{display:inline-flex}.size-4{width:calc(var(--spacing) * 4);height:calc(var(--spacing) * 4)}.size-5{width:calc(var(--spacing) * 5);height:calc(var(--spacing) * 5)}.size-6{width:calc(var(--spacing) * 6);height:calc(var(--spacing) * 6)}.size-12{width:calc(var(--spacing) * 12);height:calc(var(--spacing) * 12)}.h-16{height:calc(var(--spacing) * 16)}.min-h-screen{min-height:100vh}.w-auto{width:auto}.w-full{width:100%}.max-w-3xl{max-width:var(--container-3xl)}.shrink-0{flex-shrink:0}.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.flex-col{flex-direction:column}.items-center{align-items:center}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}.gap-1{gap:var(--spacing)}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-4{gap:calc(var(--spacing) * 4)}.gap-6{gap:calc(var(--spacing) * 6)}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.rounded-md{border-radius:8px}.rounded-xl{border-radius:12px}.border{border-style:var(--tw-border-style);border-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-b-2{border-bottom-style:var(--tw-border-style);border-bottom-width:2px}.border-border{border-color:var(--mapos-border)}.border-input{border-color:var(--mapos-input)}.border-transparent{border-color:#0000}.bg-danger-soft{background-color:var(--mapos-danger-soft)}.bg-field{background-color:var(--mapos-field)}.bg-primary{background-color:var(--mapos-primary)}.bg-surface{background-color:var(--mapos-surface)}.bg-surface-subtle{background-color:var(--mapos-surface-subtle)}.bg-warning-soft{background-color:var(--mapos-warning-soft)}.p-3{padding:calc(var(--spacing) * 3)}.p-4{padding:calc(var(--spacing) * 4)}.p-6{padding:calc(var(--spacing) * 6)}.px-3{padding-inline:calc(var(--spacing) * 3)}.px-4{padding-inline:calc(var(--spacing) * 4)}.px-6{padding-inline:calc(var(--spacing) * 6)}.py-2{padding-block:calc(var(--spacing) * 2)}.py-3{padding-block:calc(var(--spacing) * 3)}.py-8{padding-block:calc(var(--spacing) * 8)}.text-center{text-align:center}.text-left{text-align:left}.text-body-strong{font-size:1rem;line-height:var(--tw-leading,1.5);font-weight:var(--tw-font-weight,600)}.text-label-md{font-size:1rem;line-height:var(--tw-leading,1.5);font-weight:var(--tw-font-weight,500)}.text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height))}.text-xl{font-size:var(--text-xl);line-height:var(--tw-leading,var(--text-xl--line-height))}.font-bold{--tw-font-weight:var(--font-weight-bold);font-weight:var(--font-weight-bold)}.font-medium{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.whitespace-pre-line{white-space:pre-line}.text-danger{color:#dc2626}.text-danger-ink{color:var(--mapos-danger-ink)}.text-muted{color:var(--mapos-muted)}.text-on-primary{color:var(--mapos-on-primary)}.text-success{color:#15803d}.text-text{color:var(--mapos-text)}.text-warning-ink{color:var(--mapos-warning-ink)}.placeholder\:text-muted::placeholder{color:var(--mapos-muted)}.empty\:hidden:empty{display:none}@media (hover:hover){.hover\:bg-primary-hover:hover{background-color:var(--mapos-primary-hover)}}.focus\:outline-3:focus{outline-style:var(--tw-outline-style);outline-width:3px}.focus\:outline-ring\/50:focus{outline-color:var(--mapos-ring)}@supports (color:color-mix(in lab, red, red)){.focus\:outline-ring\/50:focus{outline-color:color-mix(in oklab, var(--mapos-ring) 50%, transparent)}}.disabled\:cursor-not-allowed:disabled{cursor:not-allowed}.disabled\:cursor-wait:disabled{cursor:wait}.disabled\:bg-disabled-bg:disabled{background-color:var(--mapos-disabled-bg)}.disabled\:text-disabled:disabled{color:var(--mapos-disabled)}.data-\[atual\]\:border-primary[data-atual]{border-color:var(--mapos-primary)}.data-\[atual\]\:bg-primary-tint[data-atual]{background-color:var(--mapos-primary-tint)}.data-\[atual\]\:font-semibold[data-atual]{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.data-\[atual\]\:text-text[data-atual]{color:var(--mapos-text)}@media not all and (min-width:40rem){.max-sm\:text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height))}}@media (min-width:40rem){.sm\:w-1\/4{width:25%}.sm\:flex-1{flex:1}.sm\:flex-row{flex-direction:row}.sm\:items-center{align-items:center}.sm\:gap-4{gap:calc(var(--spacing) * 4)}.sm\:p-6{padding:calc(var(--spacing) * 6)}.sm\:p-10{padding:calc(var(--spacing) * 10)}}}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-outline-style{syntax:"*";inherits:false;initial-value:solid}
+\ No newline at end of file
++@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-border-style:solid;--tw-font-weight:initial;--tw-outline-style:solid}}}@layer theme{:root,:host{--font-sans:"Rubik", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;--font-mono:Monaco, Menlo, "Ubuntu Mono", monospace;--spacing:.25rem;--container-3xl:48rem;--text-xs:.75rem;--text-xs--line-height:calc(1 / .75);--text-sm:.875rem;--text-sm--line-height:calc(1.25 / .875);--text-xl:1.25rem;--text-xl--line-height:calc(1.75 / 1.25);--font-weight-medium:500;--font-weight-semibold:600;--font-weight-bold:700;--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:10px;--radius-xl:12px;--default-font-family:"Rubik", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;--default-mono-font-family:Monaco, Menlo, "Ubuntu Mono", monospace;--color-bg:var(--mapos-bg);--color-surface:var(--mapos-surface);--color-surface-subtle:var(--mapos-surface-subtle);--color-text:var(--mapos-text);--color-muted:var(--mapos-muted);--color-border:var(--mapos-border);--color-input:var(--mapos-input);--color-field:var(--mapos-field);--color-disabled:var(--mapos-disabled);--color-disabled-bg:var(--mapos-disabled-bg);--color-primary:var(--mapos-primary);--color-primary-hover:var(--mapos-primary-hover);--color-primary-pressed:var(--mapos-primary-pressed);--color-on-primary:var(--mapos-on-primary);--color-ink:#1f1633;--color-primary-tint:var(--mapos-primary-tint);--color-primary-strong:var(--mapos-primary-strong);--color-sidebar:var(--mapos-sidebar-bg);--color-ring:var(--mapos-ring);--color-success:#15803d;--color-success-ink:var(--mapos-success-ink);--color-success-soft:var(--mapos-success-soft);--color-warning:#a16207;--color-warning-ink:var(--mapos-warning-ink);--color-warning-soft:var(--mapos-warning-soft);--color-danger:#dc2626;--color-danger-ink:var(--mapos-danger-ink);--color-danger-soft:var(--mapos-danger-soft);--color-info:#0369a1;--color-info-ink:var(--mapos-info-ink);--color-info-soft:var(--mapos-info-soft);--color-progress:#6a5fc1;--color-progress-ink:var(--mapos-progress-ink);--color-progress-soft:var(--mapos-progress-soft);--color-neutral:#79628c;--color-neutral-ink:var(--mapos-neutral-ink);--color-neutral-soft:var(--mapos-neutral-soft);--color-canvas-dark:#1f1633;--color-night:#150f23;--color-on-dark:#fff;--color-on-dark-muted:#ffffffb8;--color-on-dark-faint:#ffffff2e;--color-hairline-violet:#362d59;--color-hairline-cool:#cfcfdb;--color-hairline-cloud:#e5e7eb;--color-press-light:#f0f0f0;--color-ink-press:#1a1a1a;--color-accent-lime:#c2ef4e;--color-accent-pink:#fa7faa;--color-accent-violet:#6a5fc1;--color-accent-violet-deep:#422082;--color-accent-violet-mid:#79628c;--color-backdrop:#150f238c;--font-display:"Space Grotesk", "Rubik", system-ui, sans-serif;--text-display-hero:5.5rem;--text-display-hero--line-height:1.2;--text-display-hero--font-weight:700;--text-display-hero-sm:3rem;--text-display-hero-sm--line-height:1.2;--text-display-hero-sm--font-weight:700;--text-display-large:3.75rem;--text-display-large--line-height:1.1;--text-display-large--font-weight:500;--text-heading-xl:1.875rem;--text-heading-xl--line-height:1.2;--text-heading-xl--font-weight:500;--text-heading-lg:1.6875rem;--text-heading-lg--line-height:1.25;--text-heading-lg--font-weight:500;--text-heading-md:1.5rem;--text-heading-md--line-height:1.25;--text-heading-md--font-weight:500;--text-heading-sm:1.25rem;--text-heading-sm--line-height:1.25;--text-heading-sm--font-weight:600;--text-body-lg:1rem;--text-body-lg--line-height:2;--text-body-lg--font-weight:400;--text-body-strong:1rem;--text-body-strong--line-height:1.5;--text-body-strong--font-weight:600;--text-body-md:1rem;--text-body-md--line-height:1.5;--text-body-md--font-weight:400;--text-label-md:1rem;--text-label-md--line-height:1.5;--text-label-md--font-weight:500;--text-eyebrow:.9375rem;--text-eyebrow--line-height:1.4;--text-eyebrow--font-weight:500;--text-eyebrow--letter-spacing:.2px;--text-button-cap:.875rem;--text-button-cap--line-height:1.14;--text-button-cap--font-weight:700;--text-button-cap--letter-spacing:.2px;--text-button-cap-light:.875rem;--text-button-cap-light--line-height:1.29;--text-button-cap-light--font-weight:500;--text-button-cap-light--letter-spacing:.2px;--text-caption:.875rem;--text-caption--line-height:1.43;--text-caption--font-weight:400;--text-micro-cap:.625rem;--text-micro-cap--line-height:1.8;--text-micro-cap--font-weight:600;--text-micro-cap--letter-spacing:.25px;--text-code:1rem;--text-code--line-height:1.5;--text-code--font-weight:400;--radius-xxl:18px;--radius-control:8px;--radius-card:12px;--radius-pill:9999px;--shadow-elev-1:0 2px 8px 0 #00000014;--shadow-elev-2:0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a;--shadow-elev-3:0 0 8px 6px #150f23;--shadow-elev-4:0 .5rem 1.5rem #0000002e;--shadow-field-focus:inset 0 2px 10px #00000026;--shadow-card:var(--mapos-shadow-card);--shadow-overlay:var(--mapos-shadow-overlay);--spacing-sidebar:15.75rem;--spacing-sidebar-recolhida:4.75rem;--spacing-topbar:4rem}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring:where(:not(iframe)){outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}:root{color-scheme:light;--mapos-bg:#fff;--mapos-surface:#fff;--mapos-surface-subtle:#f6f5f9;--mapos-text:#1f1633;--mapos-muted:#5b5470;--mapos-border:#e5e7eb;--mapos-input:#8a849c;--mapos-field:#fff;--mapos-disabled:#8a849c;--mapos-disabled-bg:#e5e7eb;--mapos-primary-tint:#feeee7;--mapos-primary-strong:#b34d1d;--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-sidebar-bg:var(--mapos-surface);--mapos-sidebar-hover:var(--mapos-surface-subtle);--mapos-sidebar-text:var(--mapos-text);--mapos-sidebar-muted:var(--mapos-muted);--mapos-sidebar-border:var(--mapos-border);--mapos-sidebar-active-bg:var(--mapos-primary-tint);--mapos-sidebar-active-text:var(--mapos-primary-strong);--mapos-sidebar-accent:var(--mapos-primary);--mapos-sidebar-accent-ink:var(--mapos-on-primary);--mapos-sidebar-ring:#3b82f6;--mapos-ring:#3b82f6;--mapos-success-ink:#166534;--mapos-success-soft:#e3f0e8;--mapos-warning-ink:#854d0e;--mapos-warning-soft:#f4ece1;--mapos-danger-ink:#b91c1c;--mapos-danger-soft:#fbe5e5;--mapos-info-ink:#075985;--mapos-info-soft:#e1edf4;--mapos-progress-ink:#4a3f9e;--mapos-progress-soft:#edecf8;--mapos-neutral-ink:#4b4560;--mapos-neutral-soft:#efecf1;--mapos-shadow-card:none;--mapos-shadow-overlay:0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a}.dark,.superficie-entrada{color-scheme:dark;--mapos-bg:#1f1633;--mapos-surface:#150f23;--mapos-surface-subtle:#1b1430;--mapos-text:#fff;--mapos-muted:#ffffffb8;--mapos-border:#362d59;--mapos-input:#756d8a;--mapos-field:#1f1633;--mapos-disabled:#ffffff73;--mapos-disabled-bg:#ffffff14;--mapos-primary-tint:#391f26;--mapos-primary-strong:#f37338;--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-sidebar-bg:var(--mapos-surface);--mapos-sidebar-hover:var(--mapos-surface-subtle);--mapos-sidebar-text:var(--mapos-text);--mapos-sidebar-muted:var(--mapos-muted);--mapos-sidebar-border:var(--mapos-border);--mapos-sidebar-active-bg:var(--mapos-primary-tint);--mapos-sidebar-active-text:var(--mapos-primary-strong);--mapos-sidebar-accent:var(--mapos-primary);--mapos-sidebar-accent-ink:var(--mapos-on-primary);--mapos-sidebar-ring:#3b82f6;--mapos-ring:#3b82f6;--mapos-success-ink:#4ade80;--mapos-success-soft:#1d3032;--mapos-warning-ink:#facc15;--mapos-warning-soft:#3a2d21;--mapos-danger-ink:#f87171;--mapos-danger-soft:#391f2f;--mapos-info-ink:#38bdf8;--mapos-info-soft:#1b2b45;--mapos-progress-ink:#b8b0f0;--mapos-progress-soft:#2b244c;--mapos-neutral-ink:#d6cfe0;--mapos-neutral-soft:#2f253e;--mapos-shadow-card:none;--mapos-shadow-overlay:0 10px 30px #0000008c}.superficie-entrada :where(input,select,textarea){color-scheme:light;--mapos-text:#1f1633;--mapos-muted:#5b5470;--mapos-input:#8a849c;--mapos-field:#fff;--mapos-surface-subtle:#f6f5f9;--mapos-disabled:#8a849c;--mapos-disabled-bg:#e5e7eb}.v5-sidebar{--mapos-surface:var(--mapos-sidebar-bg);--mapos-surface-subtle:var(--mapos-sidebar-hover);--mapos-text:var(--mapos-sidebar-text);--mapos-muted:var(--mapos-sidebar-muted);--mapos-border:var(--mapos-sidebar-border);--mapos-primary-tint:var(--mapos-sidebar-active-bg);--mapos-primary-strong:var(--mapos-sidebar-active-text);--mapos-primary:var(--mapos-sidebar-accent);--mapos-on-primary:var(--mapos-sidebar-accent-ink);--mapos-ring:var(--mapos-sidebar-ring)}:root[data-tema=azul]:not(.dark),:root:not(.dark) [data-tema=azul]{--mapos-primary:#2240b8;--mapos-primary-hover:#2b4fd6;--mapos-primary-pressed:#1a3190;--mapos-on-primary:#fff;--mapos-primary-strong:#2240b8;--mapos-primary-tint:#e9ecf8;--mapos-sidebar-bg:#121a45;--mapos-sidebar-hover:#1c2762;--mapos-sidebar-text:#eef1ff;--mapos-sidebar-muted:#b7c0ea;--mapos-sidebar-border:#1c2762;--mapos-sidebar-active-bg:#2b4fd6;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#a3b4ff;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=verde]:not(.dark),:root:not(.dark) [data-tema=verde]{--mapos-primary:#0b6b60;--mapos-primary-hover:#0f7a6e;--mapos-primary-pressed:#08524a;--mapos-on-primary:#fff;--mapos-primary-strong:#0b6b60;--mapos-primary-tint:#e7f0ef;--mapos-sidebar-bg:#0a3a35;--mapos-sidebar-hover:#0f4d46;--mapos-sidebar-text:#e8fbf8;--mapos-sidebar-muted:#a9d9d2;--mapos-sidebar-border:#0f4d46;--mapos-sidebar-active-bg:#0f7a6e;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#5eead4;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=violeta]:not(.dark),:root:not(.dark) [data-tema=violeta]{--mapos-primary:#7424c4;--mapos-primary-hover:#8230d6;--mapos-primary-pressed:#5f1da3;--mapos-on-primary:#fff;--mapos-primary-strong:#7424c4;--mapos-primary-tint:#f1e9f9;--mapos-sidebar-bg:#2b1257;--mapos-sidebar-hover:#3d1c78;--mapos-sidebar-text:#f6eeff;--mapos-sidebar-muted:#cdb6ee;--mapos-sidebar-border:#3d1c78;--mapos-sidebar-active-bg:#7424c4;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#d5a6ff;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=grafite]:not(.dark),:root:not(.dark) [data-tema=grafite]{--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-primary-strong:#b34d1d;--mapos-primary-tint:#feeee7;--mapos-sidebar-bg:#1c1c1f;--mapos-sidebar-hover:#2a2a2e;--mapos-sidebar-text:#f4f4f5;--mapos-sidebar-muted:#b4b4bc;--mapos-sidebar-border:#2a2a2e;--mapos-sidebar-active-bg:#f37338;--mapos-sidebar-active-text:#1f1633;--mapos-sidebar-accent:#f37338;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root.dark[data-tema=azul],.dark [data-tema=azul]{--mapos-primary:#7f98ff;--mapos-primary-hover:#93a9ff;--mapos-primary-pressed:#6a85f2;--mapos-on-primary:#1f1633;--mapos-primary-strong:#a3b4ff;--mapos-primary-tint:#262546}:root.dark[data-tema=verde],.dark [data-tema=verde]{--mapos-primary:#2dd4bf;--mapos-primary-hover:#5eead4;--mapos-primary-pressed:#19b8a5;--mapos-on-primary:#1f1633;--mapos-primary-strong:#5eead4;--mapos-primary-tint:#192f3c}:root.dark[data-tema=violeta],.dark [data-tema=violeta]{--mapos-primary:#cf86ff;--mapos-primary-hover:#da9dff;--mapos-primary-pressed:#bd6ff0;--mapos-on-primary:#1f1633;--mapos-primary-strong:#dcaaff;--mapos-primary-tint:#332246}:root[data-tema=rosa]:not(.dark),:root:not(.dark) [data-tema=rosa]{--mapos-primary:#be185d;--mapos-primary-hover:#c81e66;--mapos-primary-pressed:#9d174d;--mapos-on-primary:#fff;--mapos-primary-strong:#be185d;--mapos-primary-tint:#f9e8ef;--mapos-sidebar-bg:#4a0d2b;--mapos-sidebar-hover:#63123a;--mapos-sidebar-text:#fff0f6;--mapos-sidebar-muted:#f0b6d0;--mapos-sidebar-border:#63123a;--mapos-sidebar-active-bg:#be185d;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#f9a8d4;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=ciano]:not(.dark),:root:not(.dark) [data-tema=ciano]{--mapos-primary:#0e7490;--mapos-primary-hover:#0c6680;--mapos-primary-pressed:#155e75;--mapos-on-primary:#fff;--mapos-primary-strong:#0e7490;--mapos-primary-tint:#e7f1f4;--mapos-sidebar-bg:#083344;--mapos-sidebar-hover:#0b4458;--mapos-sidebar-text:#ecfeff;--mapos-sidebar-muted:#a5dbe6;--mapos-sidebar-border:#0b4458;--mapos-sidebar-active-bg:#0e7490;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#67e8f9;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=ambar]:not(.dark),:root:not(.dark) [data-tema=ambar]{--mapos-primary:#f59e0b;--mapos-primary-hover:#f7ac2e;--mapos-primary-pressed:#d97706;--mapos-on-primary:#1f1633;--mapos-primary-strong:#92400e;--mapos-primary-tint:#fef3e2;--mapos-sidebar-bg:#3b2506;--mapos-sidebar-hover:#52340a;--mapos-sidebar-text:#fff8eb;--mapos-sidebar-muted:#e9cf9f;--mapos-sidebar-border:#52340a;--mapos-sidebar-active-bg:#f59e0b;--mapos-sidebar-active-text:#1f1633;--mapos-sidebar-accent:#fbbf24;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root[data-tema=indigo]:not(.dark),:root:not(.dark) [data-tema=indigo]{--mapos-primary:#4338ca;--mapos-primary-hover:#4f46e5;--mapos-primary-pressed:#3730a3;--mapos-on-primary:#fff;--mapos-primary-strong:#4338ca;--mapos-primary-tint:#ecebfa;--mapos-sidebar-bg:#1e1b4b;--mapos-sidebar-hover:#2b2770;--mapos-sidebar-text:#eef2ff;--mapos-sidebar-muted:#c3c6f0;--mapos-sidebar-border:#2b2770;--mapos-sidebar-active-bg:#4f46e5;--mapos-sidebar-active-text:#fff;--mapos-sidebar-accent:#a5b4fc;--mapos-sidebar-accent-ink:#1f1633;--mapos-sidebar-ring:#93c5fd}:root.dark[data-tema=rosa],.dark [data-tema=rosa]{--mapos-primary:#f472b6;--mapos-primary-hover:#f9a8d4;--mapos-primary-pressed:#ec4899;--mapos-on-primary:#1f1633;--mapos-primary-strong:#f9a8d4;--mapos-primary-tint:#391f3b}:root.dark[data-tema=ciano],.dark [data-tema=ciano]{--mapos-primary:#22d3ee;--mapos-primary-hover:#67e8f9;--mapos-primary-pressed:#06b6d4;--mapos-on-primary:#1f1633;--mapos-primary-strong:#67e8f9;--mapos-primary-tint:#172e43}:root.dark[data-tema=ambar],.dark [data-tema=ambar]{--mapos-primary:#fbbf24;--mapos-primary-hover:#fcd34d;--mapos-primary-pressed:#f59e0b;--mapos-on-primary:#1f1633;--mapos-primary-strong:#fcd34d;--mapos-primary-tint:#3a2b23}:root.dark[data-tema=indigo],.dark [data-tema=indigo]{--mapos-primary:#818cf8;--mapos-primary-hover:#a5b4fc;--mapos-primary-pressed:#7c86f5;--mapos-on-primary:#1f1633;--mapos-primary-strong:#a5b4fc;--mapos-primary-tint:#262345}[data-tema=padrao]{--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633}:root.dark[data-tema=grafite],.dark [data-tema=grafite]{--mapos-bg:#171717;--mapos-surface:#1f1f1f;--mapos-surface-subtle:#27272a;--mapos-text:#fafafa;--mapos-muted:#a1a1aa;--mapos-border:#3f3f46;--mapos-input:#74747d;--mapos-field:#27272a;--mapos-primary:#f97316;--mapos-primary-hover:#fb8c3a;--mapos-primary-pressed:#ea670c;--mapos-on-primary:#171717;--mapos-primary-strong:#fb923c;--mapos-primary-tint:#2a2015;--mapos-success-soft:#253a2d;--mapos-warning-soft:#3e371e;--mapos-danger-soft:#3d2a2a;--mapos-info-soft:#23353d;--mapos-progress-soft:#34333c;--mapos-neutral-soft:#39383a}:root[data-tema] .superficie-entrada{--mapos-primary:#f37338;--mapos-primary-hover:#f47e48;--mapos-primary-pressed:#db6230;--mapos-on-primary:#1f1633;--mapos-primary-strong:#f37338;--mapos-primary-tint:#391f26}body{background-color:var(--mapos-bg);color:var(--mapos-text)}}@layer utilities{.sr-only{clip-path:inset(50%);white-space:nowrap;border-width:0;width:1px;height:1px;margin:-1px;padding:0;position:absolute;overflow:hidden}.mx-auto{margin-inline:auto}.mb-1{margin-bottom:var(--spacing)}.mb-2{margin-bottom:calc(var(--spacing) * 2)}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline-flex{display:inline-flex}.size-4{width:calc(var(--spacing) * 4);height:calc(var(--spacing) * 4)}.size-5{width:calc(var(--spacing) * 5);height:calc(var(--spacing) * 5)}.size-6{width:calc(var(--spacing) * 6);height:calc(var(--spacing) * 6)}.size-12{width:calc(var(--spacing) * 12);height:calc(var(--spacing) * 12)}.h-16{height:calc(var(--spacing) * 16)}.min-h-screen{min-height:100vh}.w-auto{width:auto}.w-full{width:100%}.max-w-3xl{max-width:var(--container-3xl)}.shrink-0{flex-shrink:0}.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.flex-col{flex-direction:column}.items-center{align-items:center}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}.gap-1{gap:var(--spacing)}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-4{gap:calc(var(--spacing) * 4)}.gap-6{gap:calc(var(--spacing) * 6)}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.rounded-md{border-radius:8px}.rounded-xl{border-radius:12px}.border{border-style:var(--tw-border-style);border-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-b-2{border-bottom-style:var(--tw-border-style);border-bottom-width:2px}.border-border{border-color:var(--mapos-border)}.border-input{border-color:var(--mapos-input)}.border-transparent{border-color:#0000}.bg-danger-soft{background-color:var(--mapos-danger-soft)}.bg-field{background-color:var(--mapos-field)}.bg-primary{background-color:var(--mapos-primary)}.bg-surface{background-color:var(--mapos-surface)}.bg-surface-subtle{background-color:var(--mapos-surface-subtle)}.bg-warning-soft{background-color:var(--mapos-warning-soft)}.p-3{padding:calc(var(--spacing) * 3)}.p-4{padding:calc(var(--spacing) * 4)}.p-6{padding:calc(var(--spacing) * 6)}.px-3{padding-inline:calc(var(--spacing) * 3)}.px-4{padding-inline:calc(var(--spacing) * 4)}.px-6{padding-inline:calc(var(--spacing) * 6)}.py-2{padding-block:calc(var(--spacing) * 2)}.py-3{padding-block:calc(var(--spacing) * 3)}.py-8{padding-block:calc(var(--spacing) * 8)}.text-center{text-align:center}.text-left{text-align:left}.text-body-strong{font-size:1rem;line-height:var(--tw-leading,1.5);font-weight:var(--tw-font-weight,600)}.text-label-md{font-size:1rem;line-height:var(--tw-leading,1.5);font-weight:var(--tw-font-weight,500)}.text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height))}.text-xl{font-size:var(--text-xl);line-height:var(--tw-leading,var(--text-xl--line-height))}.font-bold{--tw-font-weight:var(--font-weight-bold);font-weight:var(--font-weight-bold)}.font-medium{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.whitespace-pre-line{white-space:pre-line}.text-danger{color:#dc2626}.text-danger-ink{color:var(--mapos-danger-ink)}.text-muted{color:var(--mapos-muted)}.text-on-primary{color:var(--mapos-on-primary)}.text-success{color:#15803d}.text-text{color:var(--mapos-text)}.text-warning-ink{color:var(--mapos-warning-ink)}.placeholder\:text-muted::placeholder{color:var(--mapos-muted)}.empty\:hidden:empty{display:none}@media (hover:hover){.hover\:bg-primary-hover:hover{background-color:var(--mapos-primary-hover)}}.focus\:outline-3:focus{outline-style:var(--tw-outline-style);outline-width:3px}.focus\:outline-ring\/50:focus{outline-color:var(--mapos-ring)}@supports (color:color-mix(in lab, red, red)){.focus\:outline-ring\/50:focus{outline-color:color-mix(in oklab, var(--mapos-ring) 50%, transparent)}}.disabled\:cursor-not-allowed:disabled{cursor:not-allowed}.disabled\:cursor-wait:disabled{cursor:wait}.disabled\:bg-disabled-bg:disabled{background-color:var(--mapos-disabled-bg)}.disabled\:text-disabled:disabled{color:var(--mapos-disabled)}.data-\[atual\]\:border-primary[data-atual]{border-color:var(--mapos-primary)}.data-\[atual\]\:bg-primary-tint[data-atual]{background-color:var(--mapos-primary-tint)}.data-\[atual\]\:font-semibold[data-atual]{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.data-\[atual\]\:text-text[data-atual]{color:var(--mapos-text)}@media not all and (min-width:40rem){.max-sm\:text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height))}}@media (min-width:40rem){.sm\:w-1\/4{width:25%}.sm\:flex-1{flex:1}.sm\:flex-row{flex-direction:row}.sm\:items-center{align-items:center}.sm\:gap-4{gap:calc(var(--spacing) * 4)}.sm\:p-6{padding:calc(var(--spacing) * 6)}.sm\:p-10{padding:calc(var(--spacing) * 10)}}}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-outline-style{syntax:"*";inherits:false;initial-value:solid}
+\ No newline at end of file
+diff --git a/install/instalador.php b/install/instalador.php
+index 31159c35..5c0475d6 100644
+--- a/install/instalador.php
++++ b/install/instalador.php
+@@ -37,13 +37,13 @@ function instaladorBloquear(bool $json = false): never
+ 
+     if ($json) {
+         header('Content-Type: application/json; charset=utf-8');
+-        exit(json_encode(['success' => false, 'message' => 'O Map-OS já está instalado.']));
++        exit(json_encode(['success' => false, 'message' => 'O Daitech-OS já está instalado.']));
+     }
+ 
+     header('Content-Type: text/html; charset=utf-8');
+-    exit('<!DOCTYPE html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Map-OS já instalado</title></head>'
++    exit('<!DOCTYPE html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daitech-OS já instalado</title></head>'
+         . '<body style="font-family:sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;line-height:1.5">'
+-        . '<h1 style="font-size:1.25rem">Map-OS já instalado</h1>'
++        . '<h1 style="font-size:1.25rem">Daitech-OS já instalado</h1>'
+         . '<p>O instalador não pode ser executado de novo. Apague a pasta <code>install</code> do servidor.</p>'
+         . '<p><a href="../">Ir para a página de login</a></p></body></html>');
+ }
+diff --git a/install/view/configuration.php b/install/view/configuration.php
+index b63da87c..361e8588 100644
+--- a/install/view/configuration.php
++++ b/install/view/configuration.php
+@@ -49,7 +49,7 @@ $campo = 'w-full rounded-md border border-input bg-field px-3 py-2 text-text pla
+     <legend class="mb-1 text-body-strong">3. URL do sistema</legend>
+       <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+         <label for="base_url" class="text-label-md sm:w-1/4">URL</label>
+-        <input type="url" id="base_url" name="base_url" placeholder="Endereço onde o Map-OS será acessado" required class="<?= $campo ?>">
++        <input type="url" id="base_url" name="base_url" placeholder="Endereço onde o Daitech-OS será acessado" required class="<?= $campo ?>">
+       </div>
+   </fieldset>
+ 
+diff --git a/install/view/index.php b/install/view/index.php
+index befcffd6..2e9e2ed1 100644
+--- a/install/view/index.php
++++ b/install/view/index.php
+@@ -17,7 +17,7 @@ require_once __DIR__ . '/icones.php';
+ <body class="min-h-screen px-4 py-8">
+   <main class="mx-auto flex max-w-3xl flex-col gap-4">
+     <header class="flex flex-col items-center gap-2 text-center">
+-      <img class="h-16 w-auto" src="<?= htmlspecialchars($dashboard_url, ENT_QUOTES) ?>assets/img/logo.png" alt="Map-OS" />
++      <img class="h-16 w-auto" src="<?= htmlspecialchars($dashboard_url, ENT_QUOTES) ?>assets/img/logo.png" alt="Daitech-OS" />
+       <h1 class="text-xl font-medium text-text"><?= htmlspecialchars($settings['title'], ENT_QUOTES) ?></h1>
+     </header>
+ 
+diff --git a/scripts/contraste-temas.mjs b/scripts/contraste-temas.mjs
+index ccf25b9e..94454afa 100644
+--- a/scripts/contraste-temas.mjs
++++ b/scripts/contraste-temas.mjs
+@@ -114,6 +114,50 @@ export const TEMAS = {
+       strong: '#dcaaff', tint: tint('#cf86ff', '#150f23', 0.16), sidebar: null,
+     }),
+   },
++  rosa: {
++    light: claro({
++      primary: '#be185d', hover: '#c81e66', pressed: '#9d174d', onPrimary: '#ffffff',
++      strong: '#be185d', tint: tint('#be185d', '#ffffff', 0.1),
++      sidebar: { bg: '#4a0d2b', hover: '#63123a', text: '#fff0f6', muted: '#f0b6d0', activeBg: '#be185d', activeText: '#ffffff', accent: '#f9a8d4', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
++    }),
++    dark: escuro({
++      primary: '#f472b6', hover: '#f9a8d4', pressed: '#ec4899', onPrimary: '#1f1633',
++      strong: '#f9a8d4', tint: tint('#f472b6', '#150f23', 0.16), sidebar: null,
++    }),
++  },
++  ciano: {
++    light: claro({
++      primary: '#0e7490', hover: '#0c6680', pressed: '#155e75', onPrimary: '#ffffff',
++      strong: '#0e7490', tint: tint('#0e7490', '#ffffff', 0.1),
++      sidebar: { bg: '#083344', hover: '#0b4458', text: '#ecfeff', muted: '#a5dbe6', activeBg: '#0e7490', activeText: '#ffffff', accent: '#67e8f9', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
++    }),
++    dark: escuro({
++      primary: '#22d3ee', hover: '#67e8f9', pressed: '#06b6d4', onPrimary: '#1f1633',
++      strong: '#67e8f9', tint: tint('#22d3ee', '#150f23', 0.16), sidebar: null,
++    }),
++  },
++  ambar: {
++    light: claro({
++      primary: '#f59e0b', hover: '#f7ac2e', pressed: '#d97706', onPrimary: '#1f1633',
++      strong: '#92400e', tint: tint('#f59e0b', '#ffffff', 0.12),
++      sidebar: { bg: '#3b2506', hover: '#52340a', text: '#fff8eb', muted: '#e9cf9f', activeBg: '#f59e0b', activeText: '#1f1633', accent: '#fbbf24', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
++    }),
++    dark: escuro({
++      primary: '#fbbf24', hover: '#fcd34d', pressed: '#f59e0b', onPrimary: '#1f1633',
++      strong: '#fcd34d', tint: tint('#fbbf24', '#150f23', 0.16), sidebar: null,
++    }),
++  },
++  indigo: {
++    light: claro({
++      primary: '#4338ca', hover: '#4f46e5', pressed: '#3730a3', onPrimary: '#ffffff',
++      strong: '#4338ca', tint: tint('#4338ca', '#ffffff', 0.1),
++      sidebar: { bg: '#1e1b4b', hover: '#2b2770', text: '#eef2ff', muted: '#c3c6f0', activeBg: '#4f46e5', activeText: '#ffffff', accent: '#a5b4fc', accentInk: '#1f1633', ring: ANEL_SIDEBAR },
++    }),
++    dark: escuro({
++      primary: '#818cf8', hover: '#a5b4fc', pressed: '#7c86f5', onPrimary: '#1f1633',
++      strong: '#a5b4fc', tint: tint('#818cf8', '#150f23', 0.16), sidebar: null,
++    }),
++  },
+   grafite: {
+     light: claro({
+       primary: '#f37338', hover: '#f47e48', pressed: '#db6230', onPrimary: '#1f1633',
+diff --git a/tests/Unit/ComponentesTest.php b/tests/Unit/ComponentesTest.php
+index 2c75b69f..f66d5ffe 100644
+--- a/tests/Unit/ComponentesTest.php
++++ b/tests/Unit/ComponentesTest.php
+@@ -366,7 +366,7 @@ final class ComponentesTest extends MaposTestCase
+ 
+         $this->assertStringContainsString('class="sr-only">Excluir</span>', $html);
+         $this->assertStringContainsString('title="Excluir"', $html);
+-        $this->assertStringContainsString('sprite.svg#trash-2"', $html);
++        $this->assertMatchesRegularExpression('#sprite\.svg(\?v=\d+)?\#trash-2"#', $html);
+         $this->assertStringContainsString('aria-hidden="true"', $html);
+     }
+ 
+@@ -618,7 +618,7 @@ final class ComponentesTest extends MaposTestCase
+ 
+         $this->assertStringContainsString('aria-invalid="true"', $html);
+         $this->assertStringContainsString('aria-describedby="campo-imei-ajuda campo-imei-erro"', $html);
+-        $this->assertStringContainsString('sprite.svg#circle-alert"', $html);
++        $this->assertMatchesRegularExpression('#sprite\.svg(\?v=\d+)?\#circle-alert"#', $html);
+         $this->assertStringContainsString('border-danger', $html);
+         $this->assertStringContainsString('focus:shadow-field-focus', $this->html('input', ['name' => 'a', 'label' => 'A']));
+         $this->assertStringContainsString('border-input', $this->html('textarea', ['name' => 'a', 'label' => 'A']));
+@@ -626,7 +626,7 @@ final class ComponentesTest extends MaposTestCase
+ 
+     public function testSelectTemChevronMenosNoMultiplo(): void
+     {
+-        $this->assertStringContainsString('sprite.svg#chevron-down"', $this->html('select', ['name' => 't', 'label' => 'T', 'options' => ['a' => 'A']]));
++        $this->assertMatchesRegularExpression('#sprite\.svg(\?v=\d+)?\#chevron-down"#', $this->html('select', ['name' => 't', 'label' => 'T', 'options' => ['a' => 'A']]));
+         $this->assertStringNotContainsString('chevron-down', $this->html('select', ['name' => 't', 'label' => 'T', 'options' => ['a' => 'A'], 'multiple' => true]));
+     }
+ 
+@@ -636,7 +636,7 @@ final class ComponentesTest extends MaposTestCase
+         $this->assertStringContainsString('type="checkbox"', $caixa);
+         $this->assertStringContainsString(' checked', $caixa);
+         $this->assertStringContainsString('aria-invalid="true" aria-describedby="campo-termos-erro"', $caixa);
+-        $this->assertStringContainsString('sprite.svg#check"', $caixa);
++        $this->assertMatchesRegularExpression('#sprite\.svg(\?v=\d+)?\#check"#', $caixa);
+         $this->assertStringContainsString('text-on-primary peer-checked:visible', $caixa);
+ 
+         $radio = $this->html('radio', ['name' => 'prioridade', 'value' => 'urgente', 'label' => 'Urgente']);
+@@ -652,7 +652,7 @@ final class ComponentesTest extends MaposTestCase
+         $html = $this->html('kpi-card', ['label' => 'Canceladas', 'value' => 0, 'icon' => 'x', 'caption' => html_purificado('<span class="text-warning-ink">atenção</span><script>x</script>')]);
+ 
+         $this->assertStringContainsString('>0</p>', $html);
+-        $this->assertStringContainsString('sprite.svg#x"', $html);
++        $this->assertMatchesRegularExpression('#sprite\.svg(\?v=\d+)?\#x"#', $html);
+         $this->assertStringContainsString('text-warning-ink', $html);
+         $this->assertStringNotContainsString('<script>', $html);
+     }
+@@ -922,7 +922,7 @@ final class ComponentesTest extends MaposTestCase
+     {
+         $html = $this->html('empty-state', ['title' => 'Vazio', 'icon' => 'wrench', 'action' => component('button', ['label' => 'Nova OS'])]);
+ 
+-        $this->assertStringContainsString('sprite.svg#wrench"', $html);
++        $this->assertMatchesRegularExpression('#sprite\.svg(\?v=\d+)?\#wrench"#', $html);
+         $this->assertStringContainsString('Nova OS</span>', $html);
+         $this->assertStringNotContainsString('<svg', $this->html('empty-state', ['title' => 'Vazio', 'icon' => null]));
+     }
+diff --git a/tests/Unit/ConfiguracoesTest.php b/tests/Unit/ConfiguracoesTest.php
+index 53b29262..ca653400 100644
+--- a/tests/Unit/ConfiguracoesTest.php
++++ b/tests/Unit/ConfiguracoesTest.php
+@@ -55,7 +55,7 @@ final class ConfiguracoesTest extends MaposTestCase
+ 
+     public function testErrosPorCampo(): void
+     {
+-        [, , $erros] = configuracaoDadosDoFormulario('geral', ['app_name' => '  ', 'per_page' => '7', 'app_tema_modo' => 'roxo', 'app_tema_cor' => 'rosa']);
++        [, , $erros] = configuracaoDadosDoFormulario('geral', ['app_name' => '  ', 'per_page' => '7', 'app_tema_modo' => 'roxo', 'app_tema_cor' => 'turquesa']);
+         $this->assertSame(['app_name', 'per_page', 'app_tema_modo', 'app_tema_cor'], array_keys($erros));
+ 
+         [, , $erros] = configuracaoDadosDoFormulario('os', ['os_notification' => 'todos', 'os_status_list' => ['Inventado']]);
+diff --git a/tests/Unit/IconeTest.php b/tests/Unit/IconeTest.php
+index d030756d..8de4b24e 100644
+--- a/tests/Unit/IconeTest.php
++++ b/tests/Unit/IconeTest.php
+@@ -14,7 +14,7 @@ final class IconeTest extends MaposTestCase
+         $this->assertStringStartsWith('<svg class="shrink-0" width="20" height="20" fill="none" stroke="currentColor"', $html);
+         $this->assertStringContainsString('aria-hidden="true"', $html);
+         $this->assertStringNotContainsString('role="img"', $html);
+-        $this->assertMatchesRegularExpression('#<use href="[^"]*assets/vendor/lucide/sprite\.svg\#plus"></use></svg>$#', $html);
++        $this->assertMatchesRegularExpression('#<use href="[^"]*assets/vendor/lucide/sprite\.svg(\?v=\d+)?\#plus"></use></svg>$#', $html);
+     }
+ 
+     public function testClasseELabelSaoEscapados(): void
+diff --git a/tests/Unit/PaginasDeErroTest.php b/tests/Unit/PaginasDeErroTest.php
+index 3d07d702..17b3c002 100644
+--- a/tests/Unit/PaginasDeErroTest.php
++++ b/tests/Unit/PaginasDeErroTest.php
+@@ -35,7 +35,7 @@ final class PaginasDeErroTest extends MaposTestCase
+         $html = $this->renderizar('error_404', ['heading' => '404 Page Not Found', 'message' => '<p>The page you requested was not found.</p>'], 'production');
+ 
+         $this->assertStringContainsString('<html lang="pt-br" data-tema-modo="sistema">', $html);
+-        $this->assertStringContainsString('<title>Página não encontrada — Map-OS</title>', $html);
++        $this->assertStringContainsString('<title>Página não encontrada — Daitech-OS</title>', $html);
+         $this->assertStringContainsString('404', $html);
+         $this->assertStringContainsString('href="/oficina/assets/dist/app.css"', $html, 'CSS pelo caminho da raiz do site.');
+         $this->assertStringContainsString('src="/oficina/assets/js/tema.js"', $html);
+@@ -93,7 +93,7 @@ final class PaginasDeErroTest extends MaposTestCase
+     public function testPagina500DaExcecaoNaoTratada(): void
+     {
+         $producao = $this->renderizar('error_500', ['exception' => 'segredo interno da exceção'], 'production');
+-        $this->assertStringContainsString('<title>Algo deu errado — Map-OS</title>', $producao);
++        $this->assertStringContainsString('<title>Algo deu errado — Daitech-OS</title>', $producao);
+         $this->assertStringNotContainsString('segredo interno', $producao);
+         $this->assertStringContainsString('O erro foi registrado', $producao);
+ 
+diff --git a/tests/Unit/PainelTest.php b/tests/Unit/PainelTest.php
+index 9ea03753..299096f3 100644
+--- a/tests/Unit/PainelTest.php
++++ b/tests/Unit/PainelTest.php
+@@ -277,7 +277,7 @@ final class PainelTest extends MaposTestCase
+     {
+         $html = $this->renderizar(['hoje' => '2026-10-09', 'pode' => ['os' => false, 'vendas' => false, 'lancamentos' => false, 'balanco' => false, 'produtos' => false]]);
+ 
+-        $this->assertStringContainsString('Bem-vindo ao Map-OS', $html);
++        $this->assertStringContainsString('Bem-vindo ao Daitech-OS', $html);
+         $this->assertStringNotContainsString('data-agenda', $html);
+         $this->assertStringNotContainsString('painel-dados', $html);
+         $this->assertStringNotContainsString('kpi', $html);
+diff --git a/tests/Unit/TemaCorTest.php b/tests/Unit/TemaCorTest.php
+index e793bf0c..46306e72 100644
+--- a/tests/Unit/TemaCorTest.php
++++ b/tests/Unit/TemaCorTest.php
+@@ -16,7 +16,7 @@ final class TemaCorTest extends MaposTestCase
+ 
+     public function testAAllowListSaoAsCincoCores(): void
+     {
+-        $this->assertSame(['padrao', 'azul', 'verde', 'violeta', 'grafite'], TEMA_CORES);
++        $this->assertSame(['padrao', 'azul', 'verde', 'violeta', 'rosa', 'ciano', 'ambar', 'indigo', 'grafite'], TEMA_CORES);
+         $this->assertSame(TEMA_CORES, array_keys(temaCoresRotulos()));
+     }
+ 
+@@ -37,7 +37,7 @@ final class TemaCorTest extends MaposTestCase
+ 
+     public static function valoresForaDaAllowList(): array
+     {
+-        return ['rosa' => ['rosa'], 'html' => ['"><script>x</script>'], 'null' => [null], 'array' => [['azul']], 'laranja' => ['laranja']];
++        return ['turquesa' => ['turquesa'], 'html' => ['"><script>x</script>'], 'null' => [null], 'array' => [['azul']], 'laranja' => ['laranja']];
+     }
+ 
+     // --- Atributos do <html> ------------------------------------------------
+@@ -222,7 +222,7 @@ final class TemaCorTest extends MaposTestCase
+     public static function pedidosNegados(): array
+     {
+         return [
+-            'cor fora da lista' => ['rosa', 'post'],
++            'cor fora da lista' => ['turquesa', 'post'],
+             'cor vazia' => ['', 'post'],
+             'sem cor' => [null, 'post'],
+             'html' => ['<b>azul</b>', 'post'],
+@@ -331,7 +331,7 @@ final class TemaCorTest extends MaposTestCase
+ 
+     public function testCorForaDaListaEhRejeitadaENaoGravada(): void
+     {
+-        [$config, , $erros] = configuracaoDadosDoFormulario('geral', ['app_name' => 'X', 'per_page' => '10', 'app_tema_modo' => 'claro', 'app_tema_cor' => 'rosa']);
++        [$config, , $erros] = configuracaoDadosDoFormulario('geral', ['app_name' => 'X', 'per_page' => '10', 'app_tema_modo' => 'claro', 'app_tema_cor' => 'turquesa']);
+ 
+         $this->assertSame(['app_tema_cor'], array_keys($erros));
+         $this->assertArrayNotHasKey('app_tema_cor', $config);
+diff --git a/tests/js/tema-cor.test.mjs b/tests/js/tema-cor.test.mjs
+index cb0b436e..49a61076 100644
+--- a/tests/js/tema-cor.test.mjs
++++ b/tests/js/tema-cor.test.mjs
+@@ -15,7 +15,7 @@ const respostaJson = { ok: true, headers: { get: () => 'application/json' }, jso
+ test('aplicarCor troca o data-tema do <html> e o padrão (laranja) remove o atributo', () => {
+     const html = htmlFalso();
+ 
+-    assert.deepEqual(CORES, ['padrao', 'azul', 'verde', 'violeta', 'grafite']);
++    assert.deepEqual(CORES, ['padrao', 'azul', 'verde', 'violeta', 'rosa', 'ciano', 'ambar', 'indigo', 'grafite']);
+ 
+     aplicarCor(html, 'azul');
+     assert.equal(html.dataset.tema, 'azul');
+@@ -30,10 +30,10 @@ test('aplicarCor troca o data-tema do <html> e o padrão (laranja) remove o atri
+ test('aplicarCor e salvarCor recusam cor fora da allow-list', () => {
+     const html = htmlFalso();
+ 
+-    assert.throws(() => aplicarCor(html, 'rosa'), /inválida/);
++    assert.throws(() => aplicarCor(html, 'turquesa'), /inválida/);
+     assert.throws(() => aplicarCor(html, '"><script>'), /inválida/);
+     assert.equal(html.dataset.tema, undefined);
+-    assert.throws(() => salvarCor('rosa', { setItem() {} }), /inválida/);
++    assert.throws(() => salvarCor('turquesa', { setItem() {} }), /inválida/);
+ });
+ 
+ test('salvarCor guarda o cache no navegador e não quebra com localStorage bloqueado', () => {
+@@ -136,7 +136,7 @@ test('clicar numa amostra troca a cor na hora, marca aria-pressed e grava no ser
+         assert.match(chamadas[0].corpo, /cor=azul/);
+ 
+         // Valor fora da allow-list (atributo adulterado no HTML) é ignorado.
+-        clicar({ dataset: { temaCorEscolher: 'rosa' } });
++        clicar({ dataset: { temaCorEscolher: 'turquesa' } });
+         assert.equal(html.dataset.tema, 'azul');
+         assert.equal(chamadas.length, 1);
+ 
+diff --git a/tests/js/tema-head.test.mjs b/tests/js/tema-head.test.mjs
+index a37704bb..741ce5fd 100644
+--- a/tests/js/tema-head.test.mjs
++++ b/tests/js/tema-head.test.mjs
+@@ -38,7 +38,7 @@ test('com preferência gravada no usuário o cache de outro navegador não manda
+ 
+ test('cor fora da allow-list no cache é ignorada', () => {
+     assert.equal(executar({}, { 'mapos:tema-cor': '"><script>' })['data-tema'], undefined);
+-    assert.equal(executar({ 'data-tema': 'azul' }, { 'mapos:tema-cor': 'rosa' })['data-tema'], 'azul', 'Mantém a do servidor.');
++    assert.equal(executar({ 'data-tema': 'azul' }, { 'mapos:tema-cor': 'turquesa' })['data-tema'], 'azul', 'Mantém a do servidor.');
+ });
+ 
+ test('o padrão no cache tira a cor do sistema quando não há preferência', () => {
