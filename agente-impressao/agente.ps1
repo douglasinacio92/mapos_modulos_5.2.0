@@ -2,18 +2,20 @@
 #
 # Fica aberto no computador da loja, ouvindo só em http://127.0.0.1:9123 (não
 # aceita conexões de outros computadores). O sistema, aberto no navegador
-# deste computador, manda a página de impressão; o agente gera o PDF com o
-# Microsoft Edge (já vem no Windows), que fica aberto em segundo plano para
-# responder rápido, e imprime com o SumatraPDF, sem abrir janela nenhuma, na impressora pedida: um nome do Windows ("ELGIN i9") ou
-# uma impressora compartilhada ("\\CAIXA\ElginI9").
+# deste computador, transforma cada página (via do cupom, fileira de
+# etiquetas, folha A4) numa imagem e manda para cá; o agente imprime as
+# imagens direto na impressora pedida, com a impressão do próprio Windows
+# (System.Drawing), sem abrir janela nenhuma. A impressora pode ser um nome do
+# Windows ("ELGIN i9") ou uma impressora compartilhada ("\\CAIXA\ElginI9").
 #
 # Rotas:
 #   GET  /status    -> {"ok":true,"impressoras":[...]}
-#   POST /imprimir  -> corpo JSON {"impressora","tipo","ajuste","documentos":[html,...]}
+#   POST /imprimir  -> {"impressora","tipo","orientacao","paginas":[{"png","larguraMm","alturaMm"}]}
 #
 # Só atende pedidos vindos do endereço do sistema (campo "site" do config.json).
 
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
 $pasta = Split-Path -Parent $MyInvocation.MyCommand.Path
 $config = Get-Content -Raw -Encoding UTF8 (Join-Path $pasta 'config.json') | ConvertFrom-Json
 
@@ -22,18 +24,8 @@ $site = ([string]$config.site).Trim().TrimEnd('/')
 # O navegador manda só a origem (https://dominio, sem a pasta). Se o config.json
 # tiver o endereço com a pasta do sistema (https://dominio/mapos), usa só a origem.
 if ($site -match '^(https?://[^/]+)') { $site = $Matches[1].ToLower() }
-$sumatra = if ($config.sumatra) { [string]$config.sumatra } else { Join-Path $pasta 'SumatraPDF.exe' }
-$edge = [string]$config.edge
-if (-not $edge) {
-    $edge = @(
-        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
-    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-}
-$temp = Join-Path $env:TEMP 'daitech-impressao'
-New-Item -ItemType Directory -Force -Path $temp | Out-Null
 $log = Join-Path $pasta 'agente.log'
-$limiteCorpo = 25MB
+$limiteCorpo = 40MB
 
 function Registrar([string]$texto) {
     $linha = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $texto
@@ -90,174 +82,102 @@ function LerPedido($fluxo) {
     return @{ metodo = $primeira[0]; caminho = ($primeira[1] -split '\?')[0]; cabecalhos = $cabecalhos; corpo = [Text.Encoding]::UTF8.GetString($corpo, 0, $lido) }
 }
 
-function Encerrar($processo) {
-    # Mata o processo e os filhos (o Edge abre vários) para não travar o próximo trabalho.
-    if ($processo -and -not $processo.HasExited) {
-        & taskkill.exe /PID $processo.Id /T /F 2>$null | Out-Null
-    }
-}
-
-function LimparEdgesPresos {
-    # Um Edge headless que ficou aberto prende o perfil e o próximo sai sem PDF.
-    Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like '*daitech-impressao*' } |
-        ForEach-Object { & taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null }
-}
-
-# --- Edge residente (DevTools Protocol) ------------------------------------
-# Abrir um Edge por impressão leva segundos. O agente deixa um Edge headless
-# aberto e, a cada impressão, só pede o PDF a ele (menos de 1 segundo).
-$portaEdge = 9223
-$perfilEdge = Join-Path $temp 'perfil-edge'
-[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
-$script:cdpId = 0
-
-function EdgeNoAr {
+function LerJson([string]$texto) {
+    # O ConvertFrom-Json do Windows PowerShell 5.1 não aceita textos de mais de
+    # 2 MB (as imagens das páginas passam disso): usa o leitor do .NET sem limite.
     try {
-        Invoke-RestMethod -Uri "http://127.0.0.1:$portaEdge/json/version" -TimeoutSec 2 | Out-Null
-        return $true
+        Add-Type -AssemblyName System.Web.Extensions
+        $leitor = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $leitor.MaxJsonLength = [int]::MaxValue
+        return $leitor.DeserializeObject($texto)
     } catch {
-        return $false
+        # PowerShell 7 não tem esse leitor, mas o ConvertFrom-Json dele não tem o limite.
+        return ($texto | ConvertFrom-Json)
     }
 }
 
-function GarantirEdge {
-    if (EdgeNoAr) { return $true }
-    LimparEdgesPresos
-    $argsEdge = @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-        '--disable-extensions', '--disable-sync', "--remote-debugging-port=$portaEdge",
-        "--user-data-dir=`"$perfilEdge`"", 'about:blank')
-    Start-Process -FilePath $edge -ArgumentList $argsEdge -WindowStyle Hidden | Out-Null
-    for ($i = 0; $i -lt 60; $i++) {
-        Start-Sleep -Milliseconds 250
-        if (EdgeNoAr) { return $true }
-    }
-    return $false
+function Campo($objeto, [string]$nome) {
+    # Lê um campo do JSON, venha ele do leitor do .NET (dicionário) ou do ConvertFrom-Json.
+    if ($objeto -is [System.Collections.IDictionary]) { return $objeto[$nome] }
+    return $objeto.$nome
 }
 
-function CdpReceber($ws) {
-    $buffer = New-Object byte[] 262144
-    $mem = New-Object System.IO.MemoryStream
-    do {
-        $segmento = New-Object 'System.ArraySegment[byte]' -ArgumentList @(, $buffer)
-        $tarefa = $ws.ReceiveAsync($segmento, [Threading.CancellationToken]::None)
-        if (-not $tarefa.Wait(30000)) { throw 'O Edge não respondeu em 30 segundos.' }
-        $mem.Write($buffer, 0, $tarefa.Result.Count)
-    } while (-not $tarefa.Result.EndOfMessage)
-    return [Text.Encoding]::UTF8.GetString($mem.ToArray())
-}
-
-function CdpEnviar($ws, [string]$metodo, $parametros) {
-    $script:cdpId++
-    $id = $script:cdpId
-    $json = @{ id = $id; method = $metodo; params = $parametros } | ConvertTo-Json -Compress -Depth 6
-    $bytes = [Text.Encoding]::UTF8.GetBytes($json)
-    $segmento = New-Object 'System.ArraySegment[byte]' -ArgumentList @(, $bytes)
-    if (-not $ws.SendAsync($segmento, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, [Threading.CancellationToken]::None).Wait(10000)) {
-        throw "O Edge não recebeu $metodo."
-    }
-    $limite = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $limite) {
-        $texto = CdpReceber $ws
-        # Respostas começam com {"id":N,...}; o resto são eventos.
-        if ($texto.StartsWith('{"id":' + $id + ',')) {
-            if ($texto.StartsWith('{"id":' + $id + ',"error"')) { throw "Edge: $metodo falhou: $texto" }
-            return $texto
-        }
-    }
-    throw "O Edge não respondeu a $metodo."
-}
-
-function PdfPeloEdgeResidente([string]$arquivoHtml, [string]$arquivoPdf) {
-    $alvo = Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:$portaEdge/json/new?about:blank" -TimeoutSec 5
-    $ws = New-Object System.Net.WebSockets.ClientWebSocket
+function ImprimirPaginas([string]$impressora, [string]$tipo, [string]$orientacao, $paginas) {
+    $imagens = New-Object System.Collections.ArrayList
+    $tamanhos = New-Object System.Collections.ArrayList
+    $documento = $null
     try {
-        if (-not $ws.ConnectAsync([Uri]$alvo.webSocketDebuggerUrl, [Threading.CancellationToken]::None).Wait(5000)) {
-            throw 'Não foi possível conectar ao Edge.'
+        foreach ($p in $paginas) {
+            $bytes = [Convert]::FromBase64String([string](Campo $p 'png'))
+            $memoria = New-Object System.IO.MemoryStream (, $bytes)
+            [void]$imagens.Add([System.Drawing.Image]::FromStream($memoria))
+            [void]$tamanhos.Add(@([double](Campo $p 'larguraMm'), [double](Campo $p 'alturaMm')))
         }
-        CdpEnviar $ws 'Page.navigate' @{ url = ([Uri]$arquivoHtml).AbsoluteUri } | Out-Null
-        # Espera a página e as fontes carregarem (no máximo 10 segundos).
-        for ($i = 0; $i -lt 100; $i++) {
-            $resposta = CdpEnviar $ws 'Runtime.evaluate' @{ expression = "document.readyState === 'complete' && document.fonts.status === 'loaded'"; returnByValue = $true }
-            if ($resposta -match '"value":true') { break }
-            Start-Sleep -Milliseconds 100
+
+        $documento = New-Object System.Drawing.Printing.PrintDocument
+        $documento.PrinterSettings.PrinterName = $impressora
+        if (-not $documento.PrinterSettings.IsValid) {
+            throw "A impressora '$impressora' não existe neste computador. Confira o nome em Configurações > Módulos Daitech (as impressoras deste computador aparecem no Testar o agente)."
         }
-        $resposta = CdpEnviar $ws 'Page.printToPDF' @{ printBackground = $true; preferCSSPageSize = $true; displayHeaderFooter = $false }
-        if ($resposta -notmatch '"data":"([^"]+)"') { throw 'O Edge não devolveu o PDF.' }
-        [IO.File]::WriteAllBytes($arquivoPdf, [Convert]::FromBase64String($Matches[1]))
-    } finally {
-        try { $ws.Dispose() } catch {}
-        try { Invoke-RestMethod -Uri "http://127.0.0.1:$portaEdge/json/close/$($alvo.id)" -TimeoutSec 2 | Out-Null } catch {}
-    }
-}
+        $documento.DocumentName = "Daitech-OS - $tipo"
+        # Sem a janelinha "Imprimindo página 1 de 1".
+        $documento.PrintController = New-Object System.Drawing.Printing.StandardPrintController
 
-function PdfPorProcesso([string]$arquivoHtml, [string]$arquivoPdf) {
-    # Plano B: um Edge só para esta impressão (mais lento).
-    $argsEdge = @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-        '--disable-extensions', '--disable-sync', '--no-pdf-header-footer',
-        "--user-data-dir=`"$temp\perfil-edge-avulso`"", "--print-to-pdf=`"$arquivoPdf`"", "`"$(([Uri]$arquivoHtml).AbsoluteUri)`"")
-    $p = Start-Process -FilePath $edge -ArgumentList $argsEdge -WindowStyle Hidden -PassThru
-    if (-not $p.WaitForExit(30000)) {
-        Encerrar $p
-        throw 'O Edge demorou mais de 30 segundos para gerar o PDF.'
-    }
-    if (-not (Test-Path $arquivoPdf)) { throw "O Edge não gerou o PDF (código $($p.ExitCode))." }
-}
-
-function GerarPdf([string]$arquivoHtml, [string]$arquivoPdf) {
-    try {
-        if (GarantirEdge) {
-            PdfPeloEdgeResidente $arquivoHtml $arquivoPdf
-            return 'residente'
-        }
-    } catch {
-        Registrar "Edge residente falhou ($($_.Exception.Message)); usando o modo lento."
-        LimparEdgesPresos
-    }
-    PdfPorProcesso $arquivoHtml $arquivoPdf
-    return 'avulso'
-}
-
-function ImprimirDocumentos([string]$impressora, [string]$ajuste, $documentos) {
-    $n = 0
-    foreach ($html in $documentos) {
-        $n++
-        $relogio = [Diagnostics.Stopwatch]::StartNew()
-        $id = [guid]::NewGuid().ToString('N')
-        $arquivoHtml = Join-Path $temp "$id.html"
-        $arquivoPdf = Join-Path $temp "$id.pdf"
-        try {
-            [IO.File]::WriteAllText($arquivoHtml, [string]$html, (New-Object Text.UTF8Encoding $false))
-            $modo = GerarPdf $arquivoHtml $arquivoPdf
-            $msPdf = $relogio.ElapsedMilliseconds
-
-            $argsSumatra = @('-print-to', "`"$impressora`"", '-print-settings', $ajuste, '-silent', "`"$arquivoPdf`"")
-            $s = Start-Process -FilePath $sumatra -ArgumentList $argsSumatra -WindowStyle Hidden -PassThru
-            if (-not $s.WaitForExit(60000)) {
-                Encerrar $s
-                throw "O SumatraPDF travou ao imprimir em '$impressora'. Confira se a impressora está ligada e sem papel preso."
+        $estado = @{ pagina = 0 }
+        $documento.add_QueryPageSettings({
+            param($remetente, $e)
+            $t = $tamanhos[$estado.pagina]
+            if ($tipo -eq 'a4') {
+                $e.PageSettings.Margins = New-Object System.Drawing.Printing.Margins(39, 39, 39, 39)  # 10 mm
+            } else {
+                # Papel do tamanho da via/fileira: a térmica não puxa papel em branco.
+                $largura = [int][Math]::Round($t[0] / 25.4 * 100)  # centésimos de polegada
+                $altura = [int][Math]::Round($t[1] / 25.4 * 100)
+                $e.PageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize('Daitech', $largura, $altura)
+                $e.PageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
             }
-            if ($s.ExitCode -ne 0) { throw "O SumatraPDF não conseguiu imprimir em '$impressora' (código $($s.ExitCode)). Confira o nome da impressora." }
-            Registrar "  documento $n`: PDF em $msPdf ms (Edge $modo), enviado à impressora em $($relogio.ElapsedMilliseconds) ms."
-        } finally {
-            Remove-Item -Force -ErrorAction SilentlyContinue $arquivoHtml, $arquivoPdf
-        }
-    }
+            if ($orientacao -eq 'landscape') { $e.PageSettings.Landscape = $true }
+            elseif ($orientacao -eq 'portrait') { $e.PageSettings.Landscape = $false }
+        }.GetNewClosure())
 
-    return $n
+        $documento.add_PrintPage({
+            param($remetente, $e)
+            $imagem = $imagens[$estado.pagina]
+            $g = $e.Graphics
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            if ($tipo -eq 'a4') {
+                # Dentro das margens; a origem do Graphics é a área imprimível.
+                $area = $e.MarginBounds
+                $x = $area.X - $e.PageSettings.HardMarginX
+                $y = $area.Y - $e.PageSettings.HardMarginY
+                $largura = $area.Width
+            } else {
+                $x = 0
+                $y = 0
+                $largura = $e.PageSettings.PrintableArea.Width
+                if ($largura -le 0) { $largura = $e.PageBounds.Width }
+            }
+            $altura = $largura * $imagem.Height / $imagem.Width
+            $g.DrawImage($imagem, [single]$x, [single]$y, [single]$largura, [single]$altura)
+            $estado.pagina++
+            $e.HasMorePages = $estado.pagina -lt $imagens.Count
+        }.GetNewClosure())
+
+        $documento.Print()
+        return $imagens.Count
+    } finally {
+        if ($documento) { $documento.Dispose() }
+        foreach ($imagem in $imagens) { $imagem.Dispose() }
+    }
 }
 
 function ListarImpressoras {
     # Lista local do Windows: rápida, não consulta impressoras de rede desligadas.
-    Add-Type -AssemblyName System.Drawing
     return @([System.Drawing.Printing.PrinterSettings]::InstalledPrinters | ForEach-Object { [string]$_ })
 }
 
-if (-not $site) { throw 'Preencha o campo "site" do config.json com o endereço do sistema, como https://sistema.daitech.com.br' }
-if (-not $edge -or -not (Test-Path $edge)) { throw 'Microsoft Edge não encontrado. Informe o caminho do msedge.exe no campo "edge" do config.json.' }
-if (-not (Test-Path $sumatra)) { throw "SumatraPDF não encontrado em $sumatra. Baixe o SumatraPDF portátil e coloque o SumatraPDF.exe nesta pasta." }
+if (-not $site) { throw 'Preencha o campo "site" do config.json com o endereço do sistema, como https://daitechsistemas.com.br' }
 
-if (-not (GarantirEdge)) { Registrar 'Aviso: o Edge residente não abriu; as impressões vão usar o modo lento.' }
 $ouvinte = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Loopback, $porta)
 $ouvinte.Start()
 Registrar "Agente de impressão no ar em http://127.0.0.1:$porta para $site"
@@ -293,23 +213,25 @@ while ($true) {
         }
 
         if ($pedido.metodo -eq 'POST' -and $pedido.caminho -eq '/imprimir') {
-            $dados = $pedido.corpo | ConvertFrom-Json
-            $impressora = [string]$dados.impressora
-            # Só as opções conhecidas do SumatraPDF: escala e orientação.
-            $partes = @(([string]$dados.ajuste) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { @('fit', 'noscale', 'shrink', 'portrait', 'landscape') -contains $_ })
-            $ajuste = if ($partes.Count -gt 0) { $partes -join ',' } else { 'fit' }
-            $documentos = @($dados.documentos)
-            if (-not $impressora -or $documentos.Count -eq 0 -or $documentos.Count -gt 10) {
-                Responder $fluxo 400 $origem @{ ok = $false; erro = 'Pedido de impressão incompleto.' }
+            $dados = LerJson $pedido.corpo
+            $impressora = [string](Campo $dados 'impressora')
+            $tipo = if (@('cupom', 'etiqueta', 'a4') -contains [string](Campo $dados 'tipo')) { [string](Campo $dados 'tipo') } else { 'a4' }
+            $orientacao = if (@('portrait', 'landscape') -contains [string](Campo $dados 'orientacao')) { [string](Campo $dados 'orientacao') } else { 'auto' }
+            $paginas = @(Campo $dados 'paginas')
+            if (-not $impressora -or $paginas.Count -eq 0 -or $paginas.Count -gt 200) {
+                Responder $fluxo 400 $origem @{ ok = $false; erro = 'Pedido de impressão incompleto. Atualize o sistema e o agente para a mesma versão.' }
                 continue
             }
+            $relogio = [Diagnostics.Stopwatch]::StartNew()
             try {
-                $n = ImprimirDocumentos $impressora $ajuste $documentos
-                Registrar "Impresso: $($dados.tipo), $n documento(s) em '$impressora'."
-                Responder $fluxo 200 $origem @{ ok = $true; documentos = $n }
+                $n = ImprimirPaginas $impressora $tipo $orientacao $paginas
+                Registrar "Impresso: $tipo, $n página(s) em '$impressora' em $($relogio.ElapsedMilliseconds) ms."
+                Responder $fluxo 200 $origem @{ ok = $true; paginas = $n }
             } catch {
-                Registrar "Erro ao imprimir em '$impressora': $($_.Exception.Message)"
-                Responder $fluxo 500 $origem @{ ok = $false; erro = $_.Exception.Message }
+                $motivo = $_.Exception.Message
+                if ($_.Exception.InnerException) { $motivo = $_.Exception.InnerException.Message }
+                Registrar "Erro ao imprimir em '$impressora': $motivo"
+                Responder $fluxo 500 $origem @{ ok = $false; erro = $motivo }
             }
             continue
         }

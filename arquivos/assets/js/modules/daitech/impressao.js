@@ -2,39 +2,35 @@
 //
 // Com a impressão direta ligada (Configurações › Módulos Daitech), um clique
 // num link com data-imprimir="cupom|a4|etiqueta" não abre a aba de impressão:
-// 1. a página de impressão é carregada num iframe escondido, sem o script que
-//    abre a janela de impressão;
-// 2. as imagens do sistema (logo, anexos) viram data: URI, porque o agente
-//    não tem a sessão do usuário;
-// 3. no cupom, as duas vias vão num documento só, uma por página, com a
-//    página da altura da via maior (80mm x altura): a impressora corta entre
-//    as páginas;
-// 4. o HTML vai para o agente do computador da loja (agente-impressao/agente.ps1),
-//    que gera o PDF com o Edge e manda para a impressora configurada.
+// 1. a página de impressão é montada num iframe escondido, com o CSS de
+//    impressão, as fontes e as imagens embutidos (sem o script que abre a
+//    janela de impressão);
+// 2. cada página vira uma imagem PNG no próprio navegador: cada via do cupom,
+//    cada fileira de etiquetas, cada folha A4;
+// 3. as imagens vão para o agente do computador da loja
+//    (agente-impressao/agente.ps1), que as manda direto para a impressora
+//    configurada, sem abrir janela nenhuma.
 // A impressão do navegador (com a janela de escolher a impressora) só abre
 // quando o agente não está neste computador. Com o agente no ar, um erro vira
-// um aviso com o motivo, sem janela nenhuma.
+// um aviso com o motivo.
 
 import { mostrarToast } from '../../lib/toast.js';
 
-const AJUSTE = { cupom: 'noscale', etiqueta: 'noscale', a4: 'fit' };
-const ORIENTACOES = ['portrait', 'landscape'];
-const ESPERA_DO_AGENTE = 120000;
-
-/** Opções do SumatraPDF para o tipo: escala e, na etiqueta, a orientação configurada. */
-export function ajusteDoTipo(tipo, orientacao = '') {
-    const ajuste = AJUSTE[tipo] ?? 'fit';
-
-    return tipo === 'etiqueta' && ORIENTACOES.includes(orientacao) ? `${ajuste},${orientacao}` : ajuste;
-}
-
-/** Troca os url(...) relativos de um CSS por endereços completos (o CSS vai dentro do HTML). */
-export function absolutizarCss(css, urlDoCss) {
-    return String(css).replace(/url\(\s*(['"]?)(?!data:|https?:|\/\/|#)([^'")]+)\1\s*\)/gi, (_, aspas, caminho) => `url(${aspas}${new URL(caminho, urlDoCss).href}${aspas})`);
-}
 const PX_POR_MM = 96 / 25.4;
+const ESPERA_DO_AGENTE = 60000;
 
-/** Tira os <script> da página de impressão e põe o <base> (o agente abre como arquivo). */
+/**
+ * Por tipo: largura da página em mm (a do iframe onde ela é montada), a
+ * largura da imagem em pixels (a resolução da impressora: 203 dpi nas
+ * térmicas) e o seletor de cada página.
+ */
+export const TIPOS = {
+    cupom: { larguraMm: 80, pixels: 640, pagina: '.cupom' },
+    etiqueta: { larguraMm: 105, pixels: 840, pagina: '.etiquetas' },
+    a4: { larguraMm: 210, pixels: 1654, pagina: '.doc-folha', folhaMm: [190, 277] },
+};
+
+/** Tira os <script> da página de impressão (o window.print) e põe o <base>. */
 export function limparHtml(html, base) {
     const semScript = String(html).replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
     const tagBase = `<base href="${String(base).replace(/"/g, '&quot;')}">`;
@@ -44,53 +40,31 @@ export function limparHtml(html, base) {
         : tagBase + semScript;
 }
 
+/** Troca os url(...) relativos de um CSS por endereços completos (o CSS vai dentro do HTML). */
+export function absolutizarCss(css, urlDoCss) {
+    return String(css).replace(/url\(\s*(['"]?)(?!data:|https?:|\/\/|#)([^'")]+)\1\s*\)/gi, (_, aspas, caminho) => `url(${aspas}${new URL(caminho, urlDoCss).href}${aspas})`);
+}
+
+/** As regras de impressão (@media print) passam a valer na tela, onde a imagem é tirada. */
+export function cssParaTela(css) {
+    return String(css).replace(/@media\s+print\b/gi, '@media all');
+}
+
 /**
- * CSS de página por tipo de impressão. altura = altura da via maior do cupom,
- * em mm, com uma folga para a fonte da impressão nunca cortar o fim da via.
+ * Corta uma página A4 alta em folhas: a altura de cada folha, em pixels da
+ * imagem, na proporção da área útil (190 x 277 mm).
  */
-export function cssDaPagina(tipo, altura = 0) {
-    if (tipo === 'a4') {
-        return '@page { size: A4; margin: 10mm; }';
-    }
-    if (tipo === 'cupom') {
-        return [
-            `@page { size: 80mm ${Math.ceil(altura * 1.06 + 8)}mm; margin: 0; }`,
-            'html, body { margin: 0; padding: 0; }',
-            '.cupom { margin: 0 !important; box-shadow: none !important; break-inside: avoid; }',
-            '.cupom:not(:last-of-type) { break-after: page !important; }',
-            '.cupom:last-of-type { break-after: auto !important; }',
-        ].join('\n');
+export function fatiasDaFolha(alturaPx, larguraPx, [larguraMm, alturaMm] = TIPOS.a4.folhaMm) {
+    const porFolha = Math.floor(larguraPx * alturaMm / larguraMm);
+    const fatias = [];
+    for (let y = 0; y < alturaPx; y += porFolha) {
+        fatias.push([y, Math.min(porFolha, alturaPx - y)]);
     }
 
-    return '';
+    return fatias;
 }
 
-/** Coloca as fontes do sistema dentro do CSS (data: URI): o Edge não baixa nada. */
-async function embutirFontes(css, origem) {
-    const urls = new Set(Array.from(css.matchAll(/url\((['"]?)(https?:[^'")]+\.(?:woff2?|ttf|otf)(?:\?[^'")]*)?)\1\)/gi), (m) => m[2]));
-    let resultado = css;
-    await Promise.all(Array.from(urls, async (url) => {
-        if (new URL(url).origin !== origem) {
-            return;
-        }
-        try {
-            const dataUri = await imagemComoDataUri(url);
-            resultado = resultado.split(url).join(dataUri);
-        } catch {
-            // fica o endereço: o Edge baixa a fonte
-        }
-    }));
-
-    return resultado;
-}
-
-async function imagemComoDataUri(src) {
-    const resposta = await fetch(src, { credentials: 'same-origin' });
-    if (!resposta.ok) {
-        throw new Error(`imagem ${resposta.status}`);
-    }
-    const blob = await resposta.blob();
-
+function lerComoDataUri(blob) {
     return new Promise((resolver, rejeitar) => {
         const leitor = new FileReader();
         leitor.onload = () => resolver(leitor.result);
@@ -99,83 +73,164 @@ async function imagemComoDataUri(src) {
     });
 }
 
+async function baixarComoDataUri(url) {
+    const resposta = await fetch(url, { credentials: 'same-origin' });
+    if (!resposta.ok) {
+        throw new Error(`arquivo ${resposta.status}`);
+    }
+
+    return lerComoDataUri(await resposta.blob());
+}
+
+/** Coloca as fontes do sistema dentro do CSS (data: URI). */
+async function embutirFontes(css, origem) {
+    const urls = new Set(Array.from(css.matchAll(/url\((['"]?)(https?:[^'")]+\.(?:woff2?|ttf|otf)(?:\?[^'")]*)?)\1\)/gi), (m) => m[2]));
+    let resultado = css;
+    await Promise.all(Array.from(urls, async (url) => {
+        if (new URL(url).origin !== origem) {
+            return;
+        }
+        try {
+            resultado = resultado.split(url).join(await baixarComoDataUri(url));
+        } catch {
+            // sem a fonte: sai com a fonte padrão
+        }
+    }));
+
+    return resultado;
+}
+
+function escaparXml(texto) {
+    return String(texto).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Desenha um elemento da página num canvas (SVG com foreignObject). */
+async function elementoNoCanvas(elemento, css, classeDoBody, larguraPixels, doc, folga = true) {
+    const caixa = elemento.getBoundingClientRect();
+    const largura = Math.ceil(caixa.width);
+    // Folga embaixo: a imagem nunca corta a última linha da página.
+    const altura = Math.ceil(caixa.height) + (folga ? 12 : 0);
+    const xhtml = new XMLSerializer().serializeToString(elemento.cloneNode(true));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${largura}" height="${altura}">`
+        + `<foreignObject x="0" y="0" width="${largura}" height="${altura}">`
+        + '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
+        + `<style>${escaparXml(css)}</style></head>`
+        + `<body class="${escaparXml(classeDoBody)}" style="margin:0;padding:0;background:#fff;width:${largura}px">${xhtml}</body></html>`
+        + '</foreignObject></svg>';
+
+    const imagem = new Image();
+    imagem.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    await imagem.decode();
+
+    const escala = larguraPixels / largura;
+    const canvas = doc.createElement('canvas');
+    canvas.width = larguraPixels;
+    canvas.height = Math.ceil(altura * escala);
+    const contexto = canvas.getContext('2d');
+    contexto.fillStyle = '#fff';
+    contexto.fillRect(0, 0, canvas.width, canvas.height);
+    contexto.drawImage(imagem, 0, 0, canvas.width, canvas.height);
+
+    return canvas;
+}
+
+function canvasEmPng(canvas) {
+    return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+}
+
 /**
- * Monta o documento que vai para o agente, a partir da URL da página de
- * impressão (as duas vias do cupom vão juntas, uma por página).
+ * Monta as páginas que vão para o agente: uma imagem PNG por via do cupom,
+ * por fileira de etiquetas ou por folha A4, com o tamanho em mm.
  */
-export async function montarImpressao(url, tipo, doc = document) {
+export async function montarPaginas(url, tipo, doc = document) {
+    const config = TIPOS[tipo];
     const resposta = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
     if (!resposta.ok) {
-        throw new Error(`página de impressão ${resposta.status}`);
+        throw new Error(`a página de impressão respondeu ${resposta.status}`);
     }
     const base = new URL('.', new URL(url, doc.baseURI)).href;
     const html = limparHtml(await resposta.text(), base);
+    const origem = doc.location.origin;
+    const nonce = doc.querySelector('meta[name="csp-nonce"]')?.content ?? '';
+
+    // O CSS da página, com as fontes e as regras de impressão, num <style> só.
+    const modelo = new DOMParser().parseFromString(html, 'text/html');
+    const partes = await Promise.all(Array.from(modelo.querySelectorAll('link[rel="stylesheet"]'), async (link) => {
+        const href = new URL(link.getAttribute('href'), base).href;
+        if (new URL(href).origin !== origem) {
+            return '';
+        }
+        const css = absolutizarCss(await (await fetch(href)).text(), href);
+
+        return cssParaTela(await embutirFontes(css, origem));
+    }));
+    const css = `${partes.join('\n')}\nhtml, body { background: #fff !important; }`;
+    modelo.querySelectorAll('link[rel="stylesheet"]').forEach((link) => link.remove());
+    const estilo = modelo.createElement('style');
+    if (nonce) {
+        estilo.setAttribute('nonce', nonce); // o iframe herda a CSP desta página
+    }
+    estilo.textContent = css;
+    modelo.head.append(estilo);
 
     const quadro = doc.createElement('iframe');
     quadro.setAttribute('aria-hidden', 'true');
     quadro.tabIndex = -1;
-    quadro.className = 'fixed -left-[9999px] top-0 h-[1px] w-[900px] border-0';
+    quadro.width = String(Math.round(config.larguraMm * PX_POR_MM));
+    quadro.height = '1200';
+    quadro.className = 'fixed -left-[9999px] top-0 border-0';
     doc.body.append(quadro);
 
     try {
         await new Promise((resolver) => {
             quadro.addEventListener('load', resolver, { once: true });
-            quadro.srcdoc = html;
+            quadro.srcdoc = '<!DOCTYPE html>\n' + modelo.documentElement.outerHTML;
         });
         const pagina = quadro.contentDocument;
         await pagina.fonts?.ready;
 
-        const origem = doc.location.origin;
-        // O CSS vai dentro do HTML (só na cópia que vai para o agente: na tela, a
-        // CSP não deixa <style> sem nonce): o Edge não precisa baixar nada.
-        const estilos = new Map();
-        await Promise.all(Array.from(pagina.querySelectorAll('link[rel="stylesheet"]'), async (link) => {
-            if (new URL(link.href).origin !== origem) {
+        // Imagens do sistema (logo, anexos) viram data: URI: dentro da imagem
+        // final não dá para buscar nada.
+        await Promise.all(Array.from(pagina.images, async (img) => {
+            if (!img.src || img.src.startsWith('data:')) {
                 return;
             }
             try {
-                const css = absolutizarCss(await (await fetch(link.href)).text(), link.href);
-                estilos.set(link.getAttribute('href'), await embutirFontes(css, origem));
+                if (new URL(img.src).origin !== origem) {
+                    throw new Error('outra origem');
+                }
+                img.src = await baixarComoDataUri(img.src);
+                await img.decode().catch(() => {});
             } catch {
-                // fica o <link>: o Edge baixa o CSS
-            }
-        }));
-        await Promise.all(Array.from(pagina.images, async (img) => {
-            if (img.src && !img.src.startsWith('data:') && new URL(img.src).origin === origem) {
-                try {
-                    img.src = await imagemComoDataUri(img.src);
-                } catch {
-                    img.remove();
-                }
+                img.remove();
             }
         }));
 
-        const documento = (css) => {
-            const copia = pagina.documentElement.cloneNode(true);
-            copia.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
-                const css = estilos.get(link.getAttribute('href'));
-                if (css !== undefined) {
-                    const estilo = pagina.createElement('style');
-                    estilo.textContent = css;
-                    link.replaceWith(estilo);
-                }
-            });
-            if (css !== '') {
-                const estilo = pagina.createElement('style');
-                estilo.textContent = css;
-                copia.querySelector('head')?.append(estilo);
-            }
-
-            return '<!DOCTYPE html>\n' + copia.outerHTML;
-        };
-
-        if (tipo === 'cupom') {
-            const alturas = Array.from(pagina.querySelectorAll('.cupom'), (via) => via.getBoundingClientRect().height / PX_POR_MM);
-
-            return [documento(cssDaPagina('cupom', Math.max(0, ...alturas)))];
+        const elementos = Array.from(pagina.querySelectorAll(config.pagina));
+        if (elementos.length === 0) {
+            elementos.push(pagina.body);
         }
 
-        return [documento(cssDaPagina(tipo))];
+        const paginas = [];
+        for (const elemento of elementos) {
+            // A etiqueta tem altura fixa (21mm): sem folga, para não desalinhar a bobina.
+            const canvas = await elementoNoCanvas(elemento, css, pagina.body.className, config.pixels, doc, tipo !== 'etiqueta');
+            const mmPorPixel = config.larguraMm / config.pixels;
+            if (tipo === 'a4') {
+                // Folhas A4: a área útil (190 x 277 mm); uma página alta vira várias folhas.
+                for (const [y, altura] of fatiasDaFolha(canvas.height, canvas.width)) {
+                    const folha = doc.createElement('canvas');
+                    folha.width = canvas.width;
+                    folha.height = altura;
+                    folha.getContext('2d').drawImage(canvas, 0, y, canvas.width, altura, 0, 0, canvas.width, altura);
+                    paginas.push({ png: canvasEmPng(folha), larguraMm: config.folhaMm[0], alturaMm: Math.round(altura * config.folhaMm[0] / canvas.width) });
+                }
+            } else {
+                paginas.push({ png: canvasEmPng(canvas), larguraMm: config.larguraMm, alturaMm: Math.round(canvas.height * mmPorPixel) });
+            }
+        }
+
+        return paginas;
     } finally {
         quadro.remove();
     }
@@ -223,11 +278,11 @@ export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
             body: JSON.stringify(dados),
         }, ESPERA_DO_AGENTE, fetchImpl);
     } catch (erro) {
-        throw new Error(erro?.name === 'AbortError' ? 'o agente não terminou a impressão em 2 minutos' : 'a conexão com o agente caiu no meio da impressão');
+        throw new Error(erro?.name === 'AbortError' ? 'o agente não respondeu em 1 minuto' : 'a conexão com o agente caiu no meio da impressão');
     }
     const corpo = await resposta.json().catch(() => ({}));
     if (!resposta.ok || corpo.ok !== true) {
-        throw new Error(corpo.erro || `agente ${resposta.status}`);
+        throw new Error(corpo.erro || `o agente respondeu ${resposta.status}`);
     }
 
     return corpo;
@@ -235,7 +290,7 @@ export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
 
 export default function iniciar(raiz, { doc = document } = {}) {
     const agente = raiz.dataset.agente;
-    const orientacao = raiz.dataset.orientacaoEtiqueta || '';
+    const orientacao = raiz.dataset.orientacaoEtiqueta || 'portrait';
     let impressoras = {};
     try {
         impressoras = JSON.parse(raiz.dataset.impressoras || '{}');
@@ -247,7 +302,7 @@ export default function iniciar(raiz, { doc = document } = {}) {
         const link = evento.target.closest?.('a[data-imprimir]');
         const tipo = link?.dataset.imprimir;
         const impressora = tipo ? impressoras[tipo] : null;
-        if (!link || !impressora || evento.ctrlKey || evento.metaKey || evento.shiftKey) {
+        if (!link || !impressora || !TIPOS[tipo] || evento.ctrlKey || evento.metaKey || evento.shiftKey) {
             return; // sem impressora para esse tipo, ou Ctrl+clique: impressão do navegador
         }
         evento.preventDefault();
@@ -265,12 +320,13 @@ export default function iniciar(raiz, { doc = document } = {}) {
 
                 return;
             }
-            const documentos = await montarImpressao(link.href, tipo, doc);
-            await enviarAoAgente(agente, { impressora, tipo, ajuste: ajusteDoTipo(tipo, orientacao), documentos });
+            const paginas = await montarPaginas(link.href, tipo, doc);
+            await enviarAoAgente(agente, { impressora, tipo, orientacao: tipo === 'etiqueta' ? orientacao : 'auto', paginas });
             mostrarToast({ mensagem: `Enviado para a impressora ${impressora}.`, variante: 'success' }, doc);
         } catch (erro) {
             console.warn('[impressao] impressão direta falhou', erro);
-            mostrarToast({ mensagem: `Não foi possível imprimir em ${impressora}: ${String(erro?.message || 'erro desconhecido').replace(/\.\s*$/, '')}. Detalhes no agente.log do computador.`, variante: 'danger', duracao: 15000 }, doc);
+            const motivo = String(erro?.message || 'erro desconhecido').replace(/\.\s*$/, '');
+            mostrarToast({ mensagem: `Não foi possível imprimir em ${impressora}: ${motivo}. Detalhes no agente.log do computador.`, variante: 'danger', duracao: 15000 }, doc);
         } finally {
             link.removeAttribute('aria-busy');
         }

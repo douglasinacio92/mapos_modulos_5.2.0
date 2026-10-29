@@ -1,9 +1,5 @@
 ﻿# Instala o agente de impressão: atalho na inicialização do Windows e abre agora.
 $pasta = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not (Test-Path (Join-Path $pasta 'SumatraPDF.exe'))) {
-    Write-Host 'Falta o SumatraPDF.exe nesta pasta. Baixe a versão portátil (64 bits) em https://www.sumatrapdfreader.org e coloque o SumatraPDF.exe aqui.'
-    exit 1
-}
 $config = Get-Content -Raw -Encoding UTF8 (Join-Path $pasta 'config.json') | ConvertFrom-Json
 if (-not $config.site -or $config.site -like '*COLOQUE-AQUI*') {
     Write-Host 'Abra o config.json e troque o "site" pelo endereço do sistema, como https://sistema.daitech.com.br'

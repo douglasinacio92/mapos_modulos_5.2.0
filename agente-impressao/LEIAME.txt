@@ -3,42 +3,48 @@ AGENTE DE IMPRESSÃO DIRETA DO DAITECH-OS
 
 Imprime o cupom, a OS em A4 e as etiquetas direto na impressora certa,
 sem abrir a janela de impressão. Instale no computador do balcão, o que
-fica com o sistema aberto.
+fica com o sistema aberto. Não precisa instalar mais nada: o agente usa a
+impressão do próprio Windows.
 
+Como funciona: o sistema, no navegador, transforma cada página (cada via do
+cupom, cada fileira de etiquetas, cada folha A4) numa imagem e manda para o
+agente, que imprime na impressora configurada.
+
+INSTALAR
 1. Copie esta pasta para C:\DaitechImpressao (ou outra pasta fixa).
-2. Baixe o SumatraPDF portátil (64 bits) em https://www.sumatrapdfreader.org
-   e coloque o arquivo SumatraPDF.exe dentro desta pasta.
-3. Abra o config.json no Bloco de Notas e troque o "site" pelo endereço do
+2. Abra o config.json no Bloco de Notas e troque o "site" pelo endereço do
    sistema. Basta o domínio, com https:// e sem barra no fim.
    Exemplo:  "site": "https://daitechsistemas.com.br"
-4. Dê dois cliques em instalar.bat. O agente abre e passa a abrir sozinho
+3. Dê dois cliques em instalar.bat. O agente abre e passa a abrir sozinho
    sempre que o Windows ligar.
-5. No sistema: Configurações > Módulos Daitech > Impressão direta.
+4. No sistema: Configurações > Módulos Daitech > Impressão direta.
    - Clique em "Testar o agente". Na primeira vez o Chrome/Edge pergunta se o
-     site pode acessar dispositivos da rede local: clique em Permitir.
-   - Escreva o nome de cada impressora como aparece no Windows (as do
-     computador aparecem como sugestão) ou o caminho compartilhado, como
-     \\CAIXA\ElginI9.
+     site pode acessar a rede local: clique em Permitir.
+   - Escreva o nome de cada impressora exatamente como aparece no "Testar o
+     agente" (ou o caminho compartilhado, como \\SERVIDOR\ELGIN i9(USB)).
    - Ligue "Imprimir direto" e salve.
 
-Impressoras:
-- Cupom (Elgin i9): no driver da Elgin, deixe o papel em 80mm e o corte
-  automático "a cada página" (ou "por página"). As duas vias vão juntas,
-  uma em cada página, e a impressora corta entre a via do cliente e a da loja.
-- Etiqueta: no driver, crie o papel de 105 x 21 mm (3 etiquetas de 35 x 21).
-  Se a etiqueta sair de comprido (girada), troque a "Orientação da etiqueta"
-  em Configurações > Módulos Daitech > Impressão direta.
+ATUALIZAR (de uma versão anterior)
+1. Dê dois cliques em desinstalar.bat.
+2. Copie os arquivos novos por cima (o seu config.json pode ficar).
+3. Dê dois cliques em instalar.bat.
+   O SumatraPDF.exe não é mais usado e pode ser apagado.
+
+IMPRESSORAS
+- Cupom (Elgin i9): cada via sai numa página do tamanho dela. No driver da
+  Elgin, deixe o corte automático "a cada página" (ou "por página") para
+  cortar entre a via do cliente e a da loja.
+- Etiqueta: 105 x 21 mm (3 etiquetas de 35 x 21 por fileira). Se a etiqueta
+  sair de comprido (girada), troque a "Orientação da etiqueta" em
+  Configurações > Módulos Daitech > Impressão direta.
 - A4: impressora comum, papel A4.
 
-Problemas:
-- Se a impressão direta falhar, o sistema abre a impressão do navegador,
-  como antes. Segurando Ctrl no clique, também abre a do navegador.
+PROBLEMAS
+- Sem o agente aberto, o sistema abre a impressão do navegador, como antes.
+  Com o agente aberto, um erro aparece como aviso vermelho no sistema.
+  Segurando Ctrl no clique, abre a impressão do navegador.
 - O que o agente fez fica registrado em agente.log, nesta pasta, com o tempo
   de cada impressão.
-- O agente deixa um Edge aberto em segundo plano (não aparece na tela) para
-  imprimir rápido. É normal ver o msedge.exe no Gerenciador de Tarefas.
-- Se uma impressão travar (impressora desligada, papel preso), o agente
-  desiste em até 1 minuto e volta a atender o sistema sozinho.
 - Para remover: desinstalar.bat.
 
 Segurança: o agente só aceita conexões do próprio computador (127.0.0.1) e
