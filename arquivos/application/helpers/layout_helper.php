@@ -254,6 +254,7 @@ if (! defined('LAYOUT_ROTULOS')) {
         'orcamentos' => 'Orçamentos',
         'pdv' => 'PDV',
         'peliculas' => 'Películas',
+        'etiquetas' => 'Etiquetas de produtos',
         'notas' => 'Mural de notas',
         'modulos' => 'Módulos Daitech',
         'os_extras' => 'Ordens de serviço',

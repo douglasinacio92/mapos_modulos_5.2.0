@@ -48,7 +48,7 @@ class Os_extras extends MY_Controller
         $total = (float) $os->valor_desconto > 0 && (float) $os->valor_desconto < $bruto ? (float) $os->valor_desconto : $bruto;
 
         // Sempre duas vias: a do cliente (com o QR para acompanhar a OS) e a da
-        // loja (com a senha do aparelho, o QR do WhatsApp do cliente e o de status).
+        // loja (com a senha do aparelho, a assinatura e o QR do WhatsApp do cliente).
         $vias = ['VIA DO CLIENTE', 'VIA DA LOJA'];
         $linkStatus = site_url('acompanhar/qr/' . $idOs . '/' . daitechTokenAcompanhar($idOs, daitechChaveAcompanhar()));
         $telefone = daitechTelefone($os->celular_cliente ?: $os->telefone_cliente);

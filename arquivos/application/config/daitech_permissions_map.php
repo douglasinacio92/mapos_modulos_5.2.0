@@ -52,6 +52,12 @@ $config['permissions_map'] = array_merge($config['permissions_map'] ?? [], [
         'excluir' => 'dPelicula',
     ],
 
+    'Etiquetas' => [
+        'index' => 'vProduto',
+        'buscar' => 'vProduto',
+        'imprimir' => 'vProduto',
+    ],
+
     'Pdv' => [
         'index' => 'aVenda',
         'buscar' => ['aVenda', 'eVenda'],

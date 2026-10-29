@@ -72,7 +72,57 @@ body {
   white-space: nowrap;
 }
 
+/* Etiquetas de produtos (Etiquetas::imprimir): várias fileiras, uma por página. */
+.etiquetas + .etiquetas {
+  break-before: page;
+}
+
+.etiqueta-produto {
+  justify-content: space-between;
+  padding: 1.2mm 1.5mm 0.8mm;
+}
+
+.etiqueta-nome {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  font-size: 6.5pt;
+  font-weight: bold;
+  line-height: 1.15;
+  text-align: center;
+  text-transform: uppercase;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.etiqueta-preco {
+  font-size: 11pt;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.etiqueta-barras {
+  display: block;
+  width: 100%;
+  height: 6mm;
+}
+
+.etiqueta-sem-preco .etiqueta-barras {
+  height: 8.5mm;
+}
+
+.etiqueta-codigo {
+  font-size: 5.5pt;
+  line-height: 1;
+  letter-spacing: 0.4px;
+}
+
 @media screen {
+  .etiquetas + .etiquetas {
+    margin-top: 3mm;
+  }
+
   body {
     padding: 8mm;
     background: #e5e7eb;

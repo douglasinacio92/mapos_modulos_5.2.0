@@ -4,18 +4,19 @@
  * Regras dos módulos Daitech (application/helpers/daitech_helper.php): menu,
  * agenda, Kanban, carrinho do PDV e do orçamento, assinatura e senha de
  * padrão da OS.
+ *
+ * Roda em processo separado: o helper dos módulos, carregado aqui, não pode
+ * vazar para os testes do Map-OS (o menu do LayoutTest, por exemplo).
  */
+#[PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses]
 final class DaitechModulosTest extends MaposTestCase
 {
-    public static function setUpBeforeClass(): void
+    protected function setUp(): void
     {
+        // No setUp (e não no setUpBeforeClass): só roda no processo de cada teste.
         require_once APPPATH . 'helpers/status_helper.php';
         require_once APPPATH . 'helpers/layout_helper.php';
         require_once APPPATH . 'helpers/daitech_helper.php';
-    }
-
-    protected function setUp(): void
-    {
     }
 
     public function testMenuGanhaOsModulosDepoisDosItensDoMapos(): void
@@ -232,6 +233,23 @@ final class DaitechModulosTest extends MaposTestCase
     {
         $this->assertStringStartsWith('data:image/svg+xml;base64,', (string) daitechQrCode('https://wa.me/5551997960244'));
         $this->assertNull(daitechQrCode(''));
+    }
+
+    public function testListaDaEtiquetaDeProdutosLimitaA300(): void
+    {
+        $this->assertSame([12 => 3, 15 => 1], daitechItensDaEtiqueta('12:3,15:1'));
+        $this->assertSame([12 => 4], daitechItensDaEtiqueta('12:3, 12:1'), 'o mesmo produto soma');
+        $this->assertSame([], daitechItensDaEtiqueta('abc,0:5,7:0,-1:2'));
+        $this->assertSame([1 => 299, 2 => 1], daitechItensDaEtiqueta('1:299,2:999,3:5'));
+    }
+
+    public function testCodigoDeBarrasDaEtiqueta(): void
+    {
+        $this->assertStringStartsWith('data:image/svg+xml;base64,', (string) daitechCodigoDeBarrasSvg('7893595900427'), 'EAN-13');
+        $this->assertNotNull(daitechCodigoDeBarrasSvg('7893595900428'), 'EAN inválido sai em Code 128');
+        $this->assertNotNull(daitechCodigoDeBarrasSvg('ABC-12'));
+        $this->assertNull(daitechCodigoDeBarrasSvg(''));
+        $this->assertNull(daitechCodigoDeBarrasSvg('ação'), 'fora do ASCII');
     }
 
     public function testEventosDaAgendaNoCalendario(): void

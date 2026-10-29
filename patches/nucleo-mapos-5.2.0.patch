@@ -223,7 +223,7 @@ index 9c629eea..e89ec04b 100644
          return new HtmlSeguro('<svg' . $atributos . '><use href="' . $href . '"></use></svg>');
      }
 diff --git a/application/helpers/layout_helper.php b/application/helpers/layout_helper.php
-index 1bed4a29..8dd12ad8 100644
+index 1bed4a29..2df219be 100644
 --- a/application/helpers/layout_helper.php
 +++ b/application/helpers/layout_helper.php
 @@ -71,7 +71,7 @@ if (! function_exists('layoutMenu')) {
@@ -245,7 +245,7 @@ index 1bed4a29..8dd12ad8 100644
      }
  }
  
-@@ -246,6 +249,14 @@ if (! defined('LAYOUT_ROTULOS')) {
+@@ -246,6 +249,15 @@ if (! defined('LAYOUT_ROTULOS')) {
          'novoscodigosdoisfatores' => 'Autenticação em dois fatores',
          'desativardoisfatores' => 'Autenticação em dois fatores',
          'minhaconta' => 'Minha conta',
@@ -254,13 +254,14 @@ index 1bed4a29..8dd12ad8 100644
 +        'orcamentos' => 'Orçamentos',
 +        'pdv' => 'PDV',
 +        'peliculas' => 'Películas',
++        'etiquetas' => 'Etiquetas de produtos',
 +        'notas' => 'Mural de notas',
 +        'modulos' => 'Módulos Daitech',
 +        'os_extras' => 'Ordens de serviço',
      ]);
  }
  
-@@ -300,13 +311,29 @@ if (! function_exists('layoutAssets')) {
+@@ -300,13 +312,29 @@ if (! function_exists('layoutAssets')) {
      }
  }
  

@@ -65,6 +65,9 @@ if (! function_exists('daitechMenu')) {
             'vendas' => [
                 ['grupo' => 'Operação', 'label' => 'Orçamentos', 'icon' => 'calculator', 'url' => 'orcamentos', 'rota' => ['Orcamentos', 'index'], 'ativo' => ['Orcamentos']],
             ],
+            'produtos' => [
+                ['grupo' => 'Operação', 'label' => 'Etiquetas', 'icon' => 'tag', 'url' => 'etiquetas', 'rota' => ['Etiquetas', 'index'], 'ativo' => ['Etiquetas']],
+            ],
             'os' => [
                 ['grupo' => 'Operação', 'label' => 'Kanban', 'icon' => 'columns-3', 'url' => 'kanban', 'rota' => ['Kanban', 'index'], 'ativo' => ['Kanban']],
                 ['grupo' => 'Operação', 'label' => 'Agenda externa', 'icon' => 'calendar-days', 'url' => 'agendamentos', 'rota' => ['Agendamentos', 'index'], 'ativo' => ['Agendamentos']],
@@ -837,5 +840,75 @@ if (! function_exists('daitechImpressaoDireta')) {
         ], static fn ($nome) => $nome !== '');
 
         return $impressoras !== [] ? $impressoras : null;
+    }
+}
+
+if (! function_exists('daitechCodigoDeBarrasSvg')) {
+    /**
+     * Código de barras em SVG (data URI) para a etiqueta de produto: EAN-13
+     * quando o código é um EAN válido, Code 128 nos outros. Null sem código
+     * ou sem a biblioteca (mPDF).
+     */
+    function daitechCodigoDeBarrasSvg(?string $codigo): ?string
+    {
+        $codigo = trim((string) $codigo);
+        if ($codigo === '' || strlen($codigo) > 40 || ! class_exists(Mpdf\Barcode::class) || preg_match('/[^\x20-\x7E]/', $codigo)) {
+            return null;
+        }
+
+        $tipos = ctype_digit($codigo)
+            ? (strlen($codigo) === 13 ? ['EAN13', 'C128B'] : (strlen($codigo) % 2 === 0 ? ['C128C', 'C128B'] : ['C128B']))
+            : ['C128B'];
+        $barras = null;
+        foreach ($tipos as $tipo) {
+            try {
+                $barras = (new Mpdf\Barcode())->getBarcodeArray($codigo, $tipo);
+                break;
+            } catch (Throwable) {
+                $barras = null;
+            }
+        }
+        if (! is_array($barras) || empty($barras['bcode'])) {
+            return null;
+        }
+
+        $x = 0;
+        $retangulos = '';
+        foreach ($barras['bcode'] as $barra) {
+            if (! empty($barra['t'])) {
+                $retangulos .= '<rect x="' . $x . '" y="0" width="' . (int) $barra['w'] . '" height="40"/>';
+            }
+            $x += (int) $barra['w'];
+        }
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' . $x . ' 40" preserveAspectRatio="none" shape-rendering="crispEdges">' . $retangulos . '</svg>';
+
+        return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    }
+}
+
+if (! function_exists('daitechItensDaEtiqueta')) {
+    /**
+     * Lê a lista da etiqueta de produtos (?i=12:3,15:1): id do produto e
+     * quantas etiquetas. No máximo 300 etiquetas por impressão.
+     *
+     * @return array<int, int> id do produto => quantidade
+     */
+    function daitechItensDaEtiqueta(?string $lista): array
+    {
+        $itens = [];
+        $total = 0;
+        foreach (explode(',', (string) $lista) as $par) {
+            if (! preg_match('/^\s*(\d{1,10}):(\d{1,3})\s*$/', $par, $m) || (int) $m[1] <= 0 || (int) $m[2] <= 0) {
+                continue;
+            }
+            $quantidade = min((int) $m[2], 300 - $total);
+            if ($quantidade <= 0) {
+                break;
+            }
+            $itens[(int) $m[1]] = ($itens[(int) $m[1]] ?? 0) + $quantidade;
+            $total += $quantidade;
+        }
+
+        return $itens;
     }
 }

@@ -26,12 +26,16 @@ Impressoras:
   automático "ao fim do documento". Cada via sai num documento, então a
   impressora corta entre a via do cliente e a da loja.
 - Etiqueta: no driver, crie o papel de 105 x 21 mm (3 etiquetas de 35 x 21).
+  Se a etiqueta sair de comprido (girada), troque a "Orientação da etiqueta"
+  em Configurações > Módulos Daitech > Impressão direta.
 - A4: impressora comum, papel A4.
 
 Problemas:
 - Se a impressão direta falhar, o sistema abre a impressão do navegador,
   como antes. Segurando Ctrl no clique, também abre a do navegador.
 - O que o agente fez fica registrado em agente.log, nesta pasta.
+- Se uma impressão travar (impressora desligada, papel preso), o agente
+  desiste em até 1 minuto e volta a atender o sistema sozinho.
 - Para remover: desinstalar.bat.
 
 Segurança: o agente só aceita conexões do próprio computador (127.0.0.1) e

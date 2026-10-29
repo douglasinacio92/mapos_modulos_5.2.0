@@ -48,6 +48,8 @@ class Modulos extends MY_Controller
             }
             $valores['dt_cliente_balcao'] = $balcao;
             $valores['dt_imp_direta'] = $this->input->post('dt_imp_direta') ? '1' : '0';
+            $orientacao = (string) $this->input->post('dt_imp_etq_orient');
+            $valores['dt_imp_etq_orient'] = in_array($orientacao, ['portrait', 'landscape', 'auto'], true) ? $orientacao : 'portrait';
 
             if ($erros === []) {
                 foreach ($valores as $config => $valor) {
@@ -76,6 +78,7 @@ class Modulos extends MY_Controller
             'dt_imp_cupom' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_cupom') : (string) ($config['dt_imp_cupom'] ?? ''),
             'dt_imp_a4' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_a4') : (string) ($config['dt_imp_a4'] ?? ''),
             'dt_imp_etiqueta' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_etiqueta') : (string) ($config['dt_imp_etiqueta'] ?? ''),
+            'dt_imp_etq_orient' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_etq_orient') : (string) (($config['dt_imp_etq_orient'] ?? '') ?: 'portrait'),
             'balcao_id' => $balcao ? (string) $balcao->idClientes : '',
             'balcao_nome' => $balcao ? (string) $balcao->nomeCliente : '',
         ];

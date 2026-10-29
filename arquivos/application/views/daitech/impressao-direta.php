@@ -8,9 +8,10 @@
 if (! function_exists('daitechImpressaoDireta')) {
     return;
 }
-$impressoras = daitechImpressaoDireta(isset($this->data['configuration']) && is_array($this->data['configuration']) ? $this->data['configuration'] : []);
+$configuracao = isset($this->data['configuration']) && is_array($this->data['configuration']) ? $this->data['configuration'] : [];
+$impressoras = daitechImpressaoDireta($configuracao);
 if ($impressoras === null) {
     return;
 }
 ?>
-<div hidden <?= js_module('daitech/impressao') ?> data-agente="<?= e(DAITECH_AGENTE_IMPRESSAO) ?>" data-impressoras="<?= e(json_encode($impressoras)) ?>"></div>
+<div hidden <?= js_module('daitech/impressao') ?> data-agente="<?= e(DAITECH_AGENTE_IMPRESSAO) ?>" data-impressoras="<?= e(json_encode($impressoras)) ?>" data-orientacao-etiqueta="<?= e(($configuracao['dt_imp_etq_orient'] ?? '') ?: 'portrait') ?>"></div>

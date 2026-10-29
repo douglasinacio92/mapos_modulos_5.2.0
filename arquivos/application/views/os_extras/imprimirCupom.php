@@ -1,10 +1,9 @@
 <?php
 /**
- * Cupom 80mm da OS (Daitech), sempre em duas vias: a do cliente (com o QR
- * para acompanhar a OS) e a da loja (com a senha do aparelho, o QR do
- * WhatsApp do cliente e o de status). Aparelho, defeito, acessórios, itens,
- * total, assinatura digital e os termos de Módulos Daitech. Classes cupom-*
- * do assets/dist/imprimir.css.
+ * Cupom 80mm da OS (Daitech), compacto e sempre em duas vias: a do cliente
+ * (com o QR para acompanhar a OS ao lado dos termos) e a da loja (com a senha
+ * do aparelho, a assinatura do cliente e o QR do WhatsApp dele). Classes
+ * cupom-* do assets/dist/imprimir.css.
  *
  * @var object       $os
  * @var list<object> $produtos
@@ -20,11 +19,11 @@
 $assinatura = daitechAssinaturaValida($os->assinatura_digital ?? null);
 $texto = static fn ($html) => trim(html_entity_decode(strip_tags(str_ireplace(['<br>', '<br/>', '<br />', '</p>'], "\n", (string) $html)), ENT_QUOTES, 'UTF-8'));
 $qtd = static fn ($q) => rtrim(rtrim(number_format((float) $q, 2, ',', ''), '0'), ',');
-$aparelho = array_filter([
-    'Aparelho' => $texto($os->descricaoProduto ?? ''),
-    'Marca/modelo' => daitechEquipamento($os),
-    'Série/IMEI' => trim((string) ($os->numero_serie ?? '')),
-]);
+$aparelho = array_values(array_filter([
+    $texto($os->descricaoProduto ?? ''),
+    daitechEquipamento($os),
+    trim((string) ($os->numero_serie ?? '')) !== '' ? 'S/N ' . trim((string) $os->numero_serie) : '',
+]));
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -35,48 +34,38 @@ $aparelho = array_filter([
     <link rel="stylesheet" href="<?= e(base_url('assets/dist/imprimir.css') . layoutVersaoAsset('assets/dist/imprimir.css')) ?>">
 </head>
 <body>
-<?php foreach ($vias as $indice => $via) { ?>
-    <div class="cupom">
-        <div class="text-center">
+<?php foreach ($vias as $indice => $via) {
+    $loja = $indice > 0;
+    $qr = $loja ? $qrWhatsapp : $qrStatus; ?>
+    <div class="cupom text-[10px] leading-snug">
+        <div class="text-center leading-tight">
             <?php if ($emitente) { ?>
-                <?php if (! empty($emitente->url_logo)) { ?><img class="mx-auto max-h-[50px] grayscale" src="<?= e($emitente->url_logo) ?>" alt=""><?php } ?>
-                <p class="mt-1 text-[13px] font-bold uppercase"><?= e($emitente->nome) ?></p>
-                <?php if ($emitente->cnpj != '00.000.000/0000-00') { ?><p>CNPJ: <?= e($emitente->cnpj) ?></p><?php } ?>
-                <p><?= e(trim($emitente->rua . ', ' . $emitente->numero . ' - ' . $emitente->bairro, ' ,-')) ?></p>
-                <p>Tel: <?= e($emitente->telefone) ?></p>
+                <?php if (! empty($emitente->url_logo)) { ?><img class="mx-auto max-h-[32px] grayscale" src="<?= e($emitente->url_logo) ?>" alt=""><?php } ?>
+                <p class="text-[12px] font-bold uppercase"><?= e($emitente->nome) ?></p>
+                <p class="text-[9px]"><?= e(implode(' · ', array_filter([$emitente->cnpj != '00.000.000/0000-00' ? 'CNPJ ' . $emitente->cnpj : '', $emitente->telefone ? 'Tel ' . $emitente->telefone : '']))) ?></p>
+                <p class="text-[9px]"><?= e(trim($emitente->rua . ', ' . $emitente->numero . ' - ' . $emitente->bairro, ' ,-')) ?></p>
             <?php } else { ?>
                 <p>Configure os dados do emitente.</p>
             <?php } ?>
         </div>
 
-        <div class="mt-1 border-t border-dashed border-ink pt-1 text-center">
-            <p class="text-[15px] font-bold"><?= e('OS #' . str_pad((string) $os->idOs, 4, '0', STR_PAD_LEFT)) ?></p>
-            <p class="text-[10px]"><?= e($via . ' · Entrada ' . dataBr($os->dataInicial)) ?></p>
-            <p class="font-bold"><?= e('Status: ' . $os->status) ?></p>
+        <div class="mt-0.5 border-t border-dashed border-ink pt-0.5 text-center">
+            <p><span class="text-[14px] font-bold"><?= e('OS #' . str_pad((string) $os->idOs, 4, '0', STR_PAD_LEFT)) ?></span> <span class="font-bold"><?= e('· ' . $via) ?></span></p>
+            <p class="text-[9px]"><?= e(implode(' · ', array_filter(['Entrada ' . dataBr($os->dataInicial), $os->dataFinal ? 'Previsão ' . dataBr($os->dataFinal) : '', 'Status: ' . $os->status]))) ?></p>
         </div>
 
-        <div class="mt-1 border-t border-dashed border-ink pt-1">
-            <p><b>Cliente:</b> <?= e($os->nomeCliente) ?></p>
-            <?php if (($os->celular_cliente ?: $os->telefone_cliente) != '') { ?><p><b>Tel:</b> <?= e($os->celular_cliente ?: $os->telefone_cliente) ?></p><?php } ?>
-            <?php if ($os->dataFinal) { ?><p><b>Previsão:</b> <?= e(dataBr($os->dataFinal)) ?></p><?php } ?>
+        <div class="mt-0.5 border-t border-dashed border-ink pt-0.5">
+            <p><b>Cliente:</b> <?= e($os->nomeCliente . (($os->celular_cliente ?: $os->telefone_cliente) != '' ? ' · ' . ($os->celular_cliente ?: $os->telefone_cliente) : '')) ?></p>
+            <?php if ($aparelho !== []) { ?><p><b>Aparelho:</b> <?= e(implode(' · ', $aparelho)) ?></p><?php } ?>
+            <?php if ($loja && trim((string) ($os->senha_dispositivo ?? '')) !== '') { ?><p><b>Senha:</b> <?= e($os->senha_dispositivo) ?></p><?php } ?>
+            <?php if ($texto($os->defeito) !== '') { ?><p class="whitespace-pre-line"><b>Defeito:</b> <?= e($texto($os->defeito)) ?></p><?php } ?>
+            <?php if ($texto($os->observacoes) !== '') { ?><p class="whitespace-pre-line"><b>Acessórios:</b> <?= e($texto($os->observacoes)) ?></p><?php } ?>
+            <?php if ($texto($os->laudoTecnico) !== '' && $os->status !== 'Aberto') { ?><p class="whitespace-pre-line"><b>Laudo:</b> <?= e($texto($os->laudoTecnico)) ?></p><?php } ?>
             <?php if ((int) $os->garantia > 0) { ?><p><b>Garantia:</b> <?= e((int) $os->garantia . ' dia(s)') ?></p><?php } ?>
         </div>
 
-        <div class="mt-1 border-t border-dashed border-ink pt-1">
-            <?php foreach ($aparelho as $rotulo => $valor) { ?>
-                <p class="whitespace-pre-line"><b><?= e($rotulo) ?>:</b> <?= e($valor) ?></p>
-            <?php } ?>
-            <?php if ($indice > 0 && trim((string) ($os->senha_dispositivo ?? '')) !== '') { ?>
-                <p><b>Senha:</b> <?= e($os->senha_dispositivo) ?></p>
-            <?php } ?>
-            <?php if ($texto($os->defeito) !== '') { ?><p class="mt-1 font-bold">DEFEITO RELATADO</p><p class="whitespace-pre-line"><?= e($texto($os->defeito)) ?></p><?php } ?>
-            <?php if ($texto($os->observacoes) !== '') { ?><p class="mt-1 font-bold">ACESSÓRIOS / OBSERVAÇÕES</p><p class="whitespace-pre-line"><?= e($texto($os->observacoes)) ?></p><?php } ?>
-            <?php if ($texto($os->laudoTecnico) !== '' && $os->status !== 'Aberto') { ?><p class="mt-1 font-bold">LAUDO TÉCNICO</p><p class="whitespace-pre-line"><?= e($texto($os->laudoTecnico)) ?></p><?php } ?>
-        </div>
-
         <?php if ($produtos || $servicos) { ?>
-            <table class="cupom-tabela mt-1 border-t border-dashed border-ink">
-                <thead><tr class="border-b border-dashed border-ink"><th class="text-left">Qtd</th><th class="text-left">Item</th><th class="text-right">Total</th></tr></thead>
+            <table class="cupom-tabela my-0 border-t border-dashed border-ink text-[10px]">
                 <tbody>
                     <?php foreach ($produtos as $p) { ?>
                         <tr><td><?= e($qtd($p->quantidade)) ?>x</td><td><?= e($p->descricao) ?></td><td class="text-right tabular-nums"><?= e(dinheiro($p->subTotal)) ?></td></tr>
@@ -89,51 +78,39 @@ $aparelho = array_filter([
             </table>
         <?php } ?>
 
-        <div class="border-t border-dashed border-ink pt-1 text-right">
+        <div class="border-t border-dashed border-ink pt-0.5 text-right">
             <?php if ($bruto > 0) { ?>
-                <?php if ($total < $bruto) { ?>
-                    <p>Subtotal: <?= e(dinheiro($bruto)) ?></p>
-                    <p>Desconto: − <?= e(dinheiro($bruto - $total)) ?></p>
-                <?php } ?>
-                <p class="cupom-total">TOTAL: <?= e(dinheiro($total)) ?></p>
+                <?php if ($total < $bruto) { ?><p><?= e('Subtotal ' . dinheiro($bruto) . ' · Desconto − ' . dinheiro($bruto - $total)) ?></p><?php } ?>
+                <p class="text-[12px] font-bold">TOTAL: <?= e(dinheiro($total)) ?></p>
             <?php } else { ?>
-                <p class="my-2 text-center font-bold">ORÇAMENTO SUJEITO A ANÁLISE TÉCNICA</p>
+                <p class="text-center font-bold">ORÇAMENTO SUJEITO A ANÁLISE TÉCNICA</p>
             <?php } ?>
         </div>
 
-        <div class="mt-4 text-center">
-            <?php if ($assinatura !== null) { ?>
-                <img src="<?= e($assinatura) ?>" alt="Assinatura do cliente" class="mx-auto -mb-2 max-h-[70px] max-w-[60mm]">
-            <?php } else { ?>
-                <div class="h-10"></div>
-            <?php } ?>
-            <div class="mx-auto w-4/5 border-t border-ink"></div>
-            <p class="text-[10px]">Assinatura do cliente</p>
-        </div>
-
-        <?php $loja = $indice > 0; ?>
-        <?php if ($qrStatus !== null || ($loja && $qrWhatsapp !== null)) { ?>
-            <div class="mt-2 flex justify-center gap-3 border-t border-dashed border-ink pt-2 text-center">
-                <?php if ($loja && $qrWhatsapp !== null) { ?>
-                    <figure class="w-[30mm]">
-                        <img src="<?= e($qrWhatsapp) ?>" alt="QR code do WhatsApp do cliente" class="mx-auto size-[28mm]">
-                        <figcaption class="text-[9px] leading-tight font-bold">WHATSAPP DO CLIENTE</figcaption>
-                    </figure>
+        <?php if ($loja) { ?>
+            <div class="mt-1 text-center">
+                <?php if ($assinatura !== null) { ?>
+                    <img src="<?= e($assinatura) ?>" alt="Assinatura do cliente" class="mx-auto -mb-1 max-h-[42px] max-w-[55mm]">
+                <?php } else { ?>
+                    <div class="h-7"></div>
                 <?php } ?>
-                <?php if ($qrStatus !== null) { ?>
-                    <figure class="w-[30mm]">
-                        <img src="<?= e($qrStatus) ?>" alt="QR code para acompanhar a OS" class="mx-auto size-[28mm]">
-                        <figcaption class="text-[9px] leading-tight font-bold"><?= e($loja ? 'STATUS DA OS' : 'ACOMPANHE SUA OS') ?></figcaption>
+                <div class="mx-auto w-4/5 border-t border-ink"></div>
+                <p class="text-[9px]">Assinatura do cliente</p>
+            </div>
+        <?php } ?>
+
+        <?php if ($termos !== '' || $qr !== null) { ?>
+            <div class="mt-1 flex items-start gap-1.5 border-t border-dashed border-ink pt-1">
+                <?php if ($termos !== '') { ?>
+                    <p class="min-w-0 flex-1 text-justify text-[8px] leading-tight whitespace-pre-line"><b>TERMOS:</b> <?= e($termos) ?></p>
+                <?php } ?>
+                <?php if ($qr !== null) { ?>
+                    <figure class="<?= $termos !== '' ? 'w-[21mm] shrink-0' : 'mx-auto w-[24mm]' ?> text-center">
+                        <img src="<?= e($qr) ?>" alt="<?= e($loja ? 'QR code do WhatsApp do cliente' : 'QR code para acompanhar a OS') ?>" class="mx-auto size-[21mm]">
+                        <figcaption class="text-[7px] leading-tight font-bold"><?= e($loja ? 'WHATSAPP DO CLIENTE' : 'ACOMPANHE SUA OS') ?></figcaption>
                     </figure>
                 <?php } ?>
             </div>
-            <?php if (! $loja && $qrStatus !== null) { ?>
-                <p class="mt-1 text-center text-[9px] leading-tight">Aponte a câmera do celular e confirme com o celular do cadastro.</p>
-            <?php } ?>
-        <?php } ?>
-
-        <?php if ($termos !== '') { ?>
-            <div class="mt-2 text-justify text-[9px] leading-tight whitespace-pre-line"><b>TERMOS E CONDIÇÕES:</b><br><?= e($termos) ?></div>
         <?php } ?>
     </div>
 <?php } ?>

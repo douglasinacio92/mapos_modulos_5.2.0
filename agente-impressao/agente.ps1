@@ -90,24 +90,66 @@ function LerPedido($fluxo) {
     return @{ metodo = $primeira[0]; caminho = ($primeira[1] -split '\?')[0]; cabecalhos = $cabecalhos; corpo = [Text.Encoding]::UTF8.GetString($corpo, 0, $lido) }
 }
 
-function Imprimir([string]$impressora, [string]$ajuste, [string]$html, [int]$numero) {
-    $id = [guid]::NewGuid().ToString('N')
-    $arquivoHtml = Join-Path $temp "$id.html"
-    $arquivoPdf = Join-Path $temp "$id.pdf"
-    [IO.File]::WriteAllText($arquivoHtml, $html, (New-Object Text.UTF8Encoding $false))
-    $url = ([Uri]$arquivoHtml).AbsoluteUri
+function Encerrar($processo) {
+    # Mata o processo e os filhos (o Edge abre vários) para não travar o próximo trabalho.
+    if ($processo -and -not $processo.HasExited) {
+        & taskkill.exe /PID $processo.Id /T /F 2>$null | Out-Null
+    }
+}
 
-    $argsEdge = @('--headless=new', '--disable-gpu', '--no-first-run', '--no-pdf-header-footer',
-        "--user-data-dir=`"$temp\perfil-edge`"", '--virtual-time-budget=5000',
-        "--print-to-pdf=`"$arquivoPdf`"", "`"$url`"")
-    $p = Start-Process -FilePath $edge -ArgumentList $argsEdge -WindowStyle Hidden -PassThru -Wait
-    if (-not (Test-Path $arquivoPdf)) { throw "O Edge não gerou o PDF (código $($p.ExitCode))." }
+function LimparEdgesPresos {
+    # Um Edge headless que ficou aberto prende o perfil e o próximo sai sem PDF.
+    Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like '*daitech-impressao*' } |
+        ForEach-Object { & taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null }
+}
 
-    $argsSumatra = @('-print-to', "`"$impressora`"", '-print-settings', $ajuste, '-silent', "`"$arquivoPdf`"")
-    $s = Start-Process -FilePath $sumatra -ArgumentList $argsSumatra -WindowStyle Hidden -PassThru -Wait
-    if ($s.ExitCode -ne 0) { throw "O SumatraPDF não conseguiu imprimir em '$impressora' (código $($s.ExitCode))." }
+function ImprimirDocumentos([string]$impressora, [string]$ajuste, $documentos) {
+    LimparEdgesPresos
+    $trabalhos = @()
+    $n = 0
+    # 1. Gera todos os PDFs ao mesmo tempo, um Edge (com perfil próprio) por documento.
+    foreach ($html in $documentos) {
+        $n++
+        $id = [guid]::NewGuid().ToString('N')
+        $arquivoHtml = Join-Path $temp "$id.html"
+        $arquivoPdf = Join-Path $temp "$id.pdf"
+        [IO.File]::WriteAllText($arquivoHtml, [string]$html, (New-Object Text.UTF8Encoding $false))
+        $url = ([Uri]$arquivoHtml).AbsoluteUri
+        $argsEdge = @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+            '--disable-extensions', '--disable-sync', '--no-pdf-header-footer',
+            "--user-data-dir=`"$temp\perfil-edge-$n`"", "--print-to-pdf=`"$arquivoPdf`"", "`"$url`"")
+        $p = Start-Process -FilePath $edge -ArgumentList $argsEdge -WindowStyle Hidden -PassThru
+        $trabalhos += @{ processo = $p; html = $arquivoHtml; pdf = $arquivoPdf }
+    }
 
-    Remove-Item -Force -ErrorAction SilentlyContinue $arquivoHtml, $arquivoPdf
+    try {
+        foreach ($t in $trabalhos) {
+            if (-not $t.processo.WaitForExit(30000)) {
+                Encerrar $t.processo
+                throw 'O Edge demorou mais de 30 segundos para gerar o PDF.'
+            }
+            if (-not (Test-Path $t.pdf)) { throw "O Edge não gerou o PDF (código $($t.processo.ExitCode))." }
+        }
+
+        # 2. Imprime na ordem (a via do cliente antes da via da loja).
+        foreach ($t in $trabalhos) {
+            $argsSumatra = @('-print-to', "`"$impressora`"", '-print-settings', $ajuste, '-silent', "`"$($t.pdf)`"")
+            $s = Start-Process -FilePath $sumatra -ArgumentList $argsSumatra -WindowStyle Hidden -PassThru
+            if (-not $s.WaitForExit(60000)) {
+                Encerrar $s
+                throw "O SumatraPDF travou ao imprimir em '$impressora'. Confira se a impressora está ligada e sem papel preso."
+            }
+            if ($s.ExitCode -ne 0) { throw "O SumatraPDF não conseguiu imprimir em '$impressora' (código $($s.ExitCode)). Confira o nome da impressora." }
+        }
+    } finally {
+        foreach ($t in $trabalhos) {
+            Encerrar $t.processo
+            Remove-Item -Force -ErrorAction SilentlyContinue $t.html, $t.pdf
+        }
+    }
+
+    return $n
 }
 
 if (-not $site) { throw 'Preencha o campo "site" do config.json com o endereço do sistema, como https://sistema.daitech.com.br' }
@@ -119,7 +161,13 @@ $ouvinte.Start()
 Registrar "Agente de impressão no ar em http://127.0.0.1:$porta para $site"
 
 while ($true) {
-    $cliente = $ouvinte.AcceptTcpClient()
+    try {
+        $cliente = $ouvinte.AcceptTcpClient()
+    } catch {
+        Registrar "Erro ao aceitar conexão: $($_.Exception.Message)"
+        Start-Sleep -Milliseconds 500
+        continue
+    }
     try {
         $cliente.ReceiveTimeout = 15000
         $fluxo = $cliente.GetStream()
@@ -145,15 +193,16 @@ while ($true) {
         if ($pedido.metodo -eq 'POST' -and $pedido.caminho -eq '/imprimir') {
             $dados = $pedido.corpo | ConvertFrom-Json
             $impressora = [string]$dados.impressora
-            $ajuste = if (@('fit', 'noscale', 'shrink') -contains [string]$dados.ajuste) { [string]$dados.ajuste } else { 'fit' }
+            # Só as opções conhecidas do SumatraPDF: escala e orientação.
+            $partes = @(([string]$dados.ajuste) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { @('fit', 'noscale', 'shrink', 'portrait', 'landscape') -contains $_ })
+            $ajuste = if ($partes.Count -gt 0) { $partes -join ',' } else { 'fit' }
             $documentos = @($dados.documentos)
             if (-not $impressora -or $documentos.Count -eq 0 -or $documentos.Count -gt 10) {
                 Responder $fluxo 400 $origem @{ ok = $false; erro = 'Pedido de impressão incompleto.' }
                 continue
             }
             try {
-                $n = 0
-                foreach ($html in $documentos) { $n++; Imprimir $impressora $ajuste ([string]$html) $n }
+                $n = ImprimirDocumentos $impressora $ajuste $documentos
                 Registrar "Impresso: $($dados.tipo), $n documento(s) em '$impressora'."
                 Responder $fluxo 200 $origem @{ ok = $true; documentos = $n }
             } catch {

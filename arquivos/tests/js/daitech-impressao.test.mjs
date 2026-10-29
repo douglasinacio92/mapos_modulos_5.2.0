@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { limparHtml, cssDaPagina, enviarAoAgente } from '../../assets/js/modules/daitech/impressao.js';
+import { limparHtml, cssDaPagina, enviarAoAgente, ajusteDoTipo, absolutizarCss } from '../../assets/js/modules/daitech/impressao.js';
 
 test('tira os scripts (o window.print) e põe o <base>', () => {
     const html = '<html><head><title>x</title></head><body><p>OS</p><script src="imprimir.js"></script><SCRIPT>alert(1)</SCRIPT></body></html>';
@@ -29,4 +29,18 @@ test('erro do agente vira exceção para o sistema abrir a impressão do navegad
         return { ok: true, status: 200, json: async () => ({ ok: true, documentos: 2 }) };
     };
     assert.equal((await enviarAoAgente('http://127.0.0.1:9123', { impressora: 'ELGIN i9' }, certo)).documentos, 2);
+});
+
+test('a etiqueta vai com a orientação configurada; o cupom e o A4 não', () => {
+    assert.equal(ajusteDoTipo('etiqueta', 'portrait'), 'noscale,portrait');
+    assert.equal(ajusteDoTipo('etiqueta', 'auto'), 'noscale');
+    assert.equal(ajusteDoTipo('cupom', 'portrait'), 'noscale');
+    assert.equal(ajusteDoTipo('a4'), 'fit');
+});
+
+test('o CSS colado no HTML mantém os endereços das fontes e imagens', () => {
+    const css = absolutizarCss('a{src:url(../fonts/x.woff2)} b{src:url("data:x")} c{src:url(https://a/b)}', 'https://s.com/mapos/assets/dist/imprimir.css?v=1');
+    assert.match(css, /url\(https:\/\/s\.com\/mapos\/assets\/fonts\/x\.woff2\)/);
+    assert.match(css, /url\("data:x"\)/);
+    assert.match(css, /url\(https:\/\/a\/b\)/);
 });

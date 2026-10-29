@@ -68,6 +68,9 @@ $caixa = 'rounded-xl border border-border bg-surface p-4 sm:p-6';
                     <?= component('input', ['name' => 'dt_imp_a4', 'label' => 'A4', 'value' => $valores['dt_imp_a4'] ?: null, 'error' => $erros['dt_imp_a4'] ?? null, 'placeholder' => '\\\\ESCRITORIO\\HP', 'attrs' => ['maxlength' => 150, 'list' => 'impressoras-do-agente', 'autocomplete' => 'off']]) ?>
                     <?= component('input', ['name' => 'dt_imp_etiqueta', 'label' => 'Etiqueta', 'value' => $valores['dt_imp_etiqueta'] ?: null, 'error' => $erros['dt_imp_etiqueta'] ?? null, 'placeholder' => 'ELGIN L42 Pro', 'attrs' => ['maxlength' => 150, 'list' => 'impressoras-do-agente', 'autocomplete' => 'off']]) ?>
                 </div>
+                <div class="sm:max-w-xs">
+                    <?= component('select', ['name' => 'dt_imp_etq_orient', 'label' => 'Orientação da etiqueta', 'options' => ['portrait' => 'Retrato (padrão)', 'landscape' => 'Paisagem', 'auto' => 'Automática'], 'selected' => $valores['dt_imp_etq_orient'], 'help' => 'Se a etiqueta sair de comprido (girada), troque aqui.']) ?>
+                </div>
                 <datalist id="impressoras-do-agente" data-impressao-lista></datalist>
             </div>
         </section>

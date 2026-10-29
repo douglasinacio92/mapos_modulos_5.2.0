@@ -16,6 +16,20 @@
 import { mostrarToast } from '../../lib/toast.js';
 
 const AJUSTE = { cupom: 'noscale', etiqueta: 'noscale', a4: 'fit' };
+const ORIENTACOES = ['portrait', 'landscape'];
+const ESPERA_DO_AGENTE = 120000;
+
+/** Opções do SumatraPDF para o tipo: escala e, na etiqueta, a orientação configurada. */
+export function ajusteDoTipo(tipo, orientacao = '') {
+    const ajuste = AJUSTE[tipo] ?? 'fit';
+
+    return tipo === 'etiqueta' && ORIENTACOES.includes(orientacao) ? `${ajuste},${orientacao}` : ajuste;
+}
+
+/** Troca os url(...) relativos de um CSS por endereços completos (o CSS vai dentro do HTML). */
+export function absolutizarCss(css, urlDoCss) {
+    return String(css).replace(/url\(\s*(['"]?)(?!data:|https?:|\/\/|#)([^'")]+)\1\s*\)/gi, (_, aspas, caminho) => `url(${aspas}${new URL(caminho, urlDoCss).href}${aspas})`);
+}
 const PX_POR_MM = 96 / 25.4;
 
 /** Tira os <script> da página de impressão e põe o <base> (o agente abre como arquivo). */
@@ -82,6 +96,19 @@ export async function montarImpressao(url, tipo, doc = document) {
         await pagina.fonts?.ready;
 
         const origem = doc.location.origin;
+        // O CSS vai dentro do HTML (só na cópia que vai para o agente: na tela, a
+        // CSP não deixa <style> sem nonce): o Edge não precisa baixar nada.
+        const estilos = new Map();
+        await Promise.all(Array.from(pagina.querySelectorAll('link[rel="stylesheet"]'), async (link) => {
+            if (new URL(link.href).origin !== origem) {
+                return;
+            }
+            try {
+                estilos.set(link.getAttribute('href'), absolutizarCss(await (await fetch(link.href)).text(), link.href));
+            } catch {
+                // fica o <link>: o Edge baixa o CSS
+            }
+        }));
         await Promise.all(Array.from(pagina.images, async (img) => {
             if (img.src && !img.src.startsWith('data:') && new URL(img.src).origin === origem) {
                 try {
@@ -94,6 +121,14 @@ export async function montarImpressao(url, tipo, doc = document) {
 
         const documento = (css, manter = null) => {
             const copia = pagina.documentElement.cloneNode(true);
+            copia.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+                const css = estilos.get(link.getAttribute('href'));
+                if (css !== undefined) {
+                    const estilo = pagina.createElement('style');
+                    estilo.textContent = css;
+                    link.replaceWith(estilo);
+                }
+            });
             if (manter !== null) {
                 copia.querySelectorAll('.cupom').forEach((via, i) => {
                     if (i !== manter) {
@@ -122,11 +157,19 @@ export async function montarImpressao(url, tipo, doc = document) {
 }
 
 export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
-    const resposta = await fetchImpl(`${agente}/imprimir`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dados),
-    });
+    const controle = typeof AbortController === 'function' ? new AbortController() : null;
+    const prazo = controle ? setTimeout(() => controle.abort(), ESPERA_DO_AGENTE) : null;
+    let resposta;
+    try {
+        resposta = await fetchImpl(`${agente}/imprimir`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados),
+            signal: controle?.signal,
+        });
+    } finally {
+        clearTimeout(prazo);
+    }
     const corpo = await resposta.json().catch(() => ({}));
     if (!resposta.ok || corpo.ok !== true) {
         throw new Error(corpo.erro || `agente ${resposta.status}`);
@@ -137,6 +180,7 @@ export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
 
 export default function iniciar(raiz, { doc = document, janela = window } = {}) {
     const agente = raiz.dataset.agente;
+    const orientacao = raiz.dataset.orientacaoEtiqueta || '';
     let impressoras = {};
     try {
         impressoras = JSON.parse(raiz.dataset.impressoras || '{}');
@@ -159,7 +203,7 @@ export default function iniciar(raiz, { doc = document, janela = window } = {}) 
 
         try {
             const documentos = await montarImpressao(link.href, tipo, doc);
-            await enviarAoAgente(agente, { impressora, tipo, ajuste: AJUSTE[tipo] ?? 'fit', documentos });
+            await enviarAoAgente(agente, { impressora, tipo, ajuste: ajusteDoTipo(tipo, orientacao), documentos });
             mostrarToast({ mensagem: `Enviado para a impressora ${impressora}.`, variante: 'success' }, doc);
         } catch (erro) {
             console.warn('[impressao] impressão direta falhou', erro);
