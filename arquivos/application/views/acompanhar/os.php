@@ -10,7 +10,10 @@
  * @var object|null $emitente
  * @var float|null  $total
  * @var string      $documento
+ * @var string|null $modo      'celular' no link do QR do cupom
+ * @var string|null $acao      URL do formulário do celular
  */
+$modo ??= 'documento';
 $entrada = [
     'titulo' => $idOs > 0 ? 'Acompanhar a OS ' . $idOs : 'Acompanhar OS',
     'secundaria' => ['label' => 'Área do cliente', 'href' => site_url('mine'), 'icon' => 'circle-user'],
@@ -21,16 +24,24 @@ $texto = static fn ($html) => trim(html_entity_decode(strip_tags(str_ireplace(['
 <main class="mx-auto grid w-full max-w-2xl flex-1 items-start px-4 py-6 lg:py-12">
     <section class="superficie-entrada w-full rounded-xxl border border-hairline-violet bg-night p-6 text-text sm:p-8" aria-labelledby="titulo-acompanhar">
         <?php if ($os === null) { ?>
-            <h1 id="titulo-acompanhar" class="font-display text-heading-md text-text">Acompanhe sua ordem de serviço</h1>
-            <p class="mt-1 text-body-md text-muted">Informe o número da OS e o CPF ou CNPJ do cadastro.</p>
+            <h1 id="titulo-acompanhar" class="font-display text-heading-md text-text"><?= e($modo === 'celular' ? 'Acompanhe a OS #' . $idOs : 'Acompanhe sua ordem de serviço') ?></h1>
+            <p class="mt-1 text-body-md text-muted"><?= e($modo === 'celular' ? 'Para sua segurança, confirme o celular informado no cadastro.' : 'Informe o número da OS e o CPF ou CNPJ do cadastro.') ?></p>
             <?php if ($erro !== null) { ?>
                 <div class="mt-4"><?= component('alert', ['variant' => 'danger', 'message' => $erro]) ?></div>
             <?php } ?>
+            <?php if ($modo === 'celular') { ?>
+            <form method="post" action="<?= e($acao) ?>" class="mt-6 flex flex-col gap-4" novalidate <?= js_module('formulario/padrao') ?>>
+                <input type="hidden" name="<?= e($this->security->get_csrf_token_name()) ?>" value="<?= e($this->security->get_csrf_hash()) ?>">
+                <?= component('input', ['name' => 'celular', 'label' => 'Celular com DDD', 'type' => 'tel', 'required' => true, 'autocomplete' => 'tel-national', 'placeholder' => '(51) 99999-9999', 'attrs' => ['data-mascara' => 'telefone', 'maxlength' => 20, 'autofocus' => true]]) ?>
+                <?= component('button', ['label' => 'Ver minha OS', 'icon' => 'search', 'type' => 'submit', 'size' => 'lg', 'class' => 'w-full']) ?>
+            </form>
+            <?php } else { ?>
             <form method="get" action="<?= e(site_url('acompanhar/os')) ?>" class="mt-6 flex flex-col gap-4" novalidate <?= js_module('formulario/padrao') ?>>
                 <?= component('input', ['name' => 'numero', 'label' => 'Número da OS', 'required' => true, 'value' => $idOs > 0 ? (string) $idOs : null, 'attrs' => ['inputmode' => 'numeric', 'maxlength' => 10]]) ?>
                 <?= component('input', ['name' => 'doc', 'label' => 'CPF ou CNPJ', 'required' => true, 'value' => $documento !== '' ? $documento : null, 'autocomplete' => 'off', 'attrs' => ['data-mascara' => 'documento', 'maxlength' => 20]]) ?>
                 <?= component('button', ['label' => 'Consultar', 'icon' => 'search', 'type' => 'submit', 'size' => 'lg', 'class' => 'w-full']) ?>
             </form>
+            <?php } ?>
         <?php } else { ?>
             <div class="flex flex-wrap items-center gap-3">
                 <h1 id="titulo-acompanhar" class="font-display text-heading-lg text-text"><?= e('OS #' . $os->idOs) ?></h1>

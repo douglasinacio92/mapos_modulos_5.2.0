@@ -54,6 +54,24 @@ $caixa = 'rounded-xl border border-border bg-surface p-4 sm:p-6';
             </div>
         </section>
 
+        <section class="<?= e($caixa) ?>" aria-labelledby="secao-impressao" <?= js_module('daitech/impressao-config') ?> data-agente="<?= e(DAITECH_AGENTE_IMPRESSAO) ?>">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="secao-impressao" class="text-heading-sm text-text">Impressão direta</h2>
+                <?= component('button', ['label' => 'Testar o agente', 'icon' => 'plug', 'variant' => 'outline', 'size' => 'sm', 'attrs' => ['data-impressao-testar' => true]]) ?>
+            </div>
+            <p class="mt-1 text-caption text-muted">Imprime sem abrir a janela de impressão. Precisa do agente de impressão instalado no computador da loja (pasta <b>agente-impressao</b> do pacote). Use o nome da impressora no Windows ou o caminho compartilhado, como \\CAIXA\ElginI9.</p>
+            <p class="mt-2 text-caption" data-impressao-status aria-live="polite"></p>
+            <div class="mt-4 flex flex-col gap-4">
+                <?= component('switch', ['name' => 'dt_imp_direta', 'label' => 'Imprimir direto nas impressoras abaixo', 'checked' => $valores['dt_imp_direta'] === '1', 'help' => 'Desligado, os botões abrem a impressão do navegador, como antes.']) ?>
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <?= component('input', ['name' => 'dt_imp_cupom', 'label' => 'Cupom 80mm', 'value' => $valores['dt_imp_cupom'] ?: null, 'error' => $erros['dt_imp_cupom'] ?? null, 'placeholder' => 'ELGIN i9', 'attrs' => ['maxlength' => 150, 'list' => 'impressoras-do-agente', 'autocomplete' => 'off']]) ?>
+                    <?= component('input', ['name' => 'dt_imp_a4', 'label' => 'A4', 'value' => $valores['dt_imp_a4'] ?: null, 'error' => $erros['dt_imp_a4'] ?? null, 'placeholder' => '\\\\ESCRITORIO\\HP', 'attrs' => ['maxlength' => 150, 'list' => 'impressoras-do-agente', 'autocomplete' => 'off']]) ?>
+                    <?= component('input', ['name' => 'dt_imp_etiqueta', 'label' => 'Etiqueta', 'value' => $valores['dt_imp_etiqueta'] ?: null, 'error' => $erros['dt_imp_etiqueta'] ?? null, 'placeholder' => 'ELGIN L42 Pro', 'attrs' => ['maxlength' => 150, 'list' => 'impressoras-do-agente', 'autocomplete' => 'off']]) ?>
+                </div>
+                <datalist id="impressoras-do-agente" data-impressao-lista></datalist>
+            </div>
+        </section>
+
         <section class="<?= e($caixa) ?>" aria-labelledby="secao-agente">
             <h2 id="secao-agente" class="text-heading-sm text-text">API do agente (n8n)</h2>
             <p class="mt-3 flex flex-wrap items-center gap-2 text-body-md text-text">Token: <?= component('pill-status', $integracoes['agente'] ? ['label' => 'Configurado', 'variant' => 'success'] : ['label' => 'Desligada', 'variant' => 'neutral']) ?></p>

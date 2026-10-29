@@ -733,3 +733,109 @@ if (! function_exists('daitechConfig')) {
         return is_string($valor) && trim($valor) !== '' ? trim($valor) : $padrao;
     }
 }
+
+if (! function_exists('daitechTokenAcompanhar')) {
+    /**
+     * Código do QR "acompanhe sua OS" (acompanhar/qr/ID/CODIGO): HMAC do número
+     * da OS com a chave do sistema. Sem a chave não dá para montar o link de
+     * outra OS trocando só o número.
+     */
+    function daitechTokenAcompanhar(int $idOs, string $chave): string
+    {
+        return substr(hash_hmac('sha256', 'acompanhar-os|' . $idOs, $chave), 0, 20);
+    }
+}
+
+if (! function_exists('daitechCelularConfere')) {
+    /**
+     * O celular digitado pelo cliente é um dos telefones do cadastro? Compara
+     * só os dígitos, sem o 55 do país, e exige o número com DDD.
+     *
+     * @param list<string|null> $cadastrados
+     */
+    function daitechCelularConfere(string $digitado, array $cadastrados): bool
+    {
+        $limpar = static function (?string $numero): string {
+            $digitos = preg_replace('/\D/', '', (string) $numero);
+            if (strlen($digitos) >= 12 && str_starts_with($digitos, '55')) {
+                $digitos = substr($digitos, 2);
+            }
+
+            return ltrim($digitos, '0');
+        };
+
+        $informado = $limpar($digitado);
+        if (strlen($informado) < 10) {
+            return false;
+        }
+
+        foreach ($cadastrados as $numero) {
+            $cadastro = $limpar($numero);
+            if ($cadastro !== '' && hash_equals($cadastro, $informado)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (! function_exists('daitechQrCode')) {
+    /** QR code em SVG (data URI) para as impressões, ou null sem a biblioteca. */
+    function daitechQrCode(string $texto): ?string
+    {
+        if ($texto === '' || ! class_exists(chillerlan\QRCode\QRCode::class)) {
+            return null;
+        }
+
+        $opcoes = new chillerlan\QRCode\QROptions([
+            'outputType' => chillerlan\QRCode\QRCode::OUTPUT_MARKUP_SVG,
+            'eccLevel' => chillerlan\QRCode\QRCode::ECC_M,
+            'addQuietzone' => true,
+            'quietzoneSize' => 2,
+        ]);
+
+        return (new chillerlan\QRCode\QRCode($opcoes))->render($texto);
+    }
+}
+
+if (! function_exists('daitechChaveAcompanhar')) {
+    /** Chave do HMAC do QR: a APP_ENCRYPTION_KEY, ou um hash do acesso ao banco sem ela. */
+    function daitechChaveAcompanhar(): string
+    {
+        $chave = (string) config_item('encryption_key');
+        if (strlen($chave) >= 16 && $chave !== 'enter_encryption_key') {
+            return $chave;
+        }
+        $ci = &get_instance();
+
+        return hash('sha256', 'daitech|' . (string) ($ci->db->password ?? '') . '|' . (string) ($ci->db->database ?? ''));
+    }
+}
+
+if (! defined('DAITECH_AGENTE_IMPRESSAO')) {
+    /** Endereço do agente de impressão no computador da loja (agente-impressao/agente.ps1). */
+    define('DAITECH_AGENTE_IMPRESSAO', 'http://127.0.0.1:9123');
+}
+
+if (! function_exists('daitechImpressaoDireta')) {
+    /**
+     * Impressoras da impressão direta, ou null com ela desligada.
+     *
+     * @param  array<string, mixed>       $config configuracoes do sistema
+     * @return array<string, string>|null tipo (cupom, a4, etiqueta) => impressora
+     */
+    function daitechImpressaoDireta(array $config): ?array
+    {
+        if ((string) ($config['dt_imp_direta'] ?? '0') !== '1') {
+            return null;
+        }
+        $impressoras = array_filter([
+            'cupom' => trim((string) ($config['dt_imp_cupom'] ?? '')),
+            'a4' => trim((string) ($config['dt_imp_a4'] ?? '')),
+            'etiqueta' => trim((string) ($config['dt_imp_etiqueta'] ?? '')),
+        ], static fn ($nome) => $nome !== '');
+
+        return $impressoras !== [] ? $impressoras : null;
+    }
+}

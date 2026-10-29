@@ -1,0 +1,38 @@
+AGENTE DE IMPRESSÃO DIRETA DO DAITECH-OS
+========================================
+
+Imprime o cupom, a OS em A4 e as etiquetas direto na impressora certa,
+sem abrir a janela de impressão. Instale no computador do balcão, o que
+fica com o sistema aberto.
+
+1. Copie esta pasta para C:\DaitechImpressao (ou outra pasta fixa).
+2. Baixe o SumatraPDF portátil (64 bits) em https://www.sumatrapdfreader.org
+   e coloque o arquivo SumatraPDF.exe dentro desta pasta.
+3. Abra o config.json no Bloco de Notas e troque o "site" pelo endereço do
+   sistema, exatamente como aparece no navegador, sem barra no fim.
+   Exemplo:  "site": "https://sistema.daitech.com.br"
+4. Dê dois cliques em instalar.bat. O agente abre e passa a abrir sozinho
+   sempre que o Windows ligar.
+5. No sistema: Configurações > Módulos Daitech > Impressão direta.
+   - Clique em "Testar o agente". Na primeira vez o Chrome/Edge pergunta se o
+     site pode acessar dispositivos da rede local: clique em Permitir.
+   - Escreva o nome de cada impressora como aparece no Windows (as do
+     computador aparecem como sugestão) ou o caminho compartilhado, como
+     \\CAIXA\ElginI9.
+   - Ligue "Imprimir direto" e salve.
+
+Impressoras:
+- Cupom (Elgin i9): no driver da Elgin, deixe o papel em 80mm e o corte
+  automático "ao fim do documento". Cada via sai num documento, então a
+  impressora corta entre a via do cliente e a da loja.
+- Etiqueta: no driver, crie o papel de 105 x 21 mm (3 etiquetas de 35 x 21).
+- A4: impressora comum, papel A4.
+
+Problemas:
+- Se a impressão direta falhar, o sistema abre a impressão do navegador,
+  como antes. Segurando Ctrl no clique, também abre a do navegador.
+- O que o agente fez fica registrado em agente.log, nesta pasta.
+- Para remover: desinstalar.bat.
+
+Segurança: o agente só aceita conexões do próprio computador (127.0.0.1) e
+só atende pedidos vindos do endereço escrito no config.json.

@@ -292,6 +292,20 @@ index 1bed4a29..8dd12ad8 100644
      }
  }
  
+diff --git a/application/helpers/seguranca_cabecalhos_helper.php b/application/helpers/seguranca_cabecalhos_helper.php
+index 38922f09..6c25d1a1 100644
+--- a/application/helpers/seguranca_cabecalhos_helper.php
++++ b/application/helpers/seguranca_cabecalhos_helper.php
+@@ -38,7 +38,8 @@ function segurancaPoliticaCsp($reportUri, $nonce = '')
+         'style-src' => "'self'" . ($nonce !== '' ? " 'nonce-" . $nonce . "'" : ''),
+         'img-src' => "'self' data: blob: https:",
+         'font-src' => "'self' data:",
+-        'connect-src' => "'self' https://viacep.com.br https://brasilapi.com.br https://minhareceita.org https://publica.cnpj.ws",
++        // Módulos Daitech: http://127.0.0.1:9123 é o agente de impressão direta do computador da loja.
++        'connect-src' => "'self' https://viacep.com.br https://brasilapi.com.br https://minhareceita.org https://publica.cnpj.ws http://127.0.0.1:9123",
+         'object-src' => "'none'",
+         'base-uri' => "'self'",
+         'form-action' => "'self'",
 diff --git a/application/helpers/tema_helper.php b/application/helpers/tema_helper.php
 index 5cdd4983..fcc75fe0 100644
 --- a/application/helpers/tema_helper.php
@@ -635,21 +649,26 @@ index 92ca1f9e..8f74d334 100644
                  <footer class="doc-rodape">
                      <div class="flex justify-between">
 diff --git a/application/views/os/visualizar.php b/application/views/os/visualizar.php
-index 145c1bdf..b4bc6d32 100644
+index 145c1bdf..1bd3df68 100644
 --- a/application/views/os/visualizar.php
 +++ b/application/views/os/visualizar.php
-@@ -62,6 +62,10 @@ $textos = [
+@@ -60,8 +60,13 @@ $textos = [
+             <?php if ($pode['faturar']) { ?>
+                 <?= component('button', ['label' => 'Faturar', 'icon' => 'circle-dollar-sign', 'variant' => 'outline', 'attrs' => ['data-modal-abrir' => 'faturar-os']]) ?>
              <?php } ?>
-             <?= component('button', ['label' => 'Imprimir', 'icon' => 'printer', 'variant' => 'ghost', 'href' => site_url('os/imprimir/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
-             <?= component('button', ['label' => 'Cupom 80mm', 'icon' => 'receipt', 'variant' => 'ghost', 'href' => site_url('os/imprimirTermica/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
-+            <?php if (is_file(APPPATH . 'views/os_extras/partes/botoes.php')) {
-+                // Módulos Daitech: cupom 2 vias.
+-            <?= component('button', ['label' => 'Imprimir', 'icon' => 'printer', 'variant' => 'ghost', 'href' => site_url('os/imprimir/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
+-            <?= component('button', ['label' => 'Cupom 80mm', 'icon' => 'receipt', 'variant' => 'ghost', 'href' => site_url('os/imprimirTermica/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
++            <?php // Módulos Daitech: "Imprimir A4" (data-imprimir para a impressão direta) e, no lugar do "Cupom 80mm", o cupom 2 vias e as etiquetas.?>
++            <?= component('button', ['label' => 'Imprimir A4', 'icon' => 'printer', 'variant' => 'ghost', 'href' => site_url('os/imprimir/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener', 'data-imprimir' => 'a4']]) ?>
++            <?php if (is_file(APPPATH . 'views/os_extras/partes/botoes.php') && function_exists('daitechAssinaturaValida')) {
 +                $this->load->view('os_extras/partes/botoes', ['idOs' => $idOs]);
-+            } ?>
++            } else { ?>
++                <?= component('button', ['label' => 'Cupom 80mm', 'icon' => 'receipt', 'variant' => 'ghost', 'href' => site_url('os/imprimirTermica/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
++            <?php } ?>
              <?php if ($os->garantias_id) { ?>
                  <?= component('button', ['label' => 'Termo de garantia', 'icon' => 'file-text', 'variant' => 'ghost', 'href' => site_url('garantias/imprimirGarantiaOs/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
              <?php } ?>
-@@ -128,6 +132,11 @@ $textos = [
+@@ -128,6 +133,11 @@ $textos = [
              </section>
          </div>
  
@@ -701,7 +720,7 @@ index bfb1b649..234f626b 100644
                    <button type="button" data-tema-cor-escolher="<?= e($cor) ?>" aria-pressed="false" aria-label="<?= e($rotulo) ?>" title="<?= e($rotulo) ?>" class="group inline-flex size-9 items-center justify-center rounded-full border border-transparent hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-ring aria-pressed:border-text">
                      <span data-tema="<?= e($cor) ?>" class="inline-flex size-6 items-center justify-center rounded-full bg-primary text-on-primary"><?= icon('check', ['class' => 'size-3.5 opacity-0 group-aria-pressed:opacity-100']) ?></span>
 diff --git a/application/views/tema/rodape.php b/application/views/tema/rodape.php
-index 535050f8..41b2eb10 100644
+index 535050f8..850b59ad 100644
 --- a/application/views/tema/rodape.php
 +++ b/application/views/tema/rodape.php
 @@ -13,15 +13,18 @@
@@ -726,12 +745,13 @@ index 535050f8..41b2eb10 100644
  <div class="v5-shell">
    <div data-toast-region class="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">
      <?php foreach ($layout['flash'] as $mensagem) { ?>
-@@ -30,6 +33,10 @@
+@@ -30,6 +33,11 @@
    </div>
  </div>
  
 +<?php if (isset($this->load) && is_file(APPPATH . 'views/daitech/instalar-app.php')) {
 +    $this->load->view('daitech/instalar-app', ['entrada' => false]); // Módulos Daitech
++    $this->load->view('daitech/impressao-direta');
 +} ?>
 +
  </body>
@@ -905,7 +925,7 @@ index 3c09c3f7..e4849f2e 100644
  @source "../js/lib/**/*.js";
  @source "../js/modules/**/*.js";
 diff --git a/assets/src/icones.json b/assets/src/icones.json
-index b4030453..d7441251 100644
+index b4030453..a6cae803 100644
 --- a/assets/src/icones.json
 +++ b/assets/src/icones.json
 @@ -2,6 +2,9 @@
@@ -930,7 +950,7 @@ index b4030453..d7441251 100644
    "external-link",
    "eye",
    "eye-off",
-@@ -28,35 +34,47 @@
+@@ -28,35 +34,48 @@
    "image",
    "info",
    "key-round",
@@ -952,6 +972,7 @@ index b4030453..d7441251 100644
 +  "pen-line",
    "pencil",
    "percent",
++  "plug",
    "plus",
    "printer",
    "qr-code",
@@ -1383,6 +1404,19 @@ index 9ea03753..299096f3 100644
          $this->assertStringNotContainsString('data-agenda', $html);
          $this->assertStringNotContainsString('painel-dados', $html);
          $this->assertStringNotContainsString('kpi', $html);
+diff --git a/tests/Unit/SegurancaCabecalhosTest.php b/tests/Unit/SegurancaCabecalhosTest.php
+index 43493df9..21fb1c9d 100644
+--- a/tests/Unit/SegurancaCabecalhosTest.php
++++ b/tests/Unit/SegurancaCabecalhosTest.php
+@@ -221,7 +221,7 @@ final class SegurancaCabecalhosTest extends MaposTestCase
+         $csp = segurancaPoliticaCsp('');
+ 
+         $this->assertStringContainsString(
+-            "connect-src 'self' https://viacep.com.br https://brasilapi.com.br https://minhareceita.org https://publica.cnpj.ws;",
++            "connect-src 'self' https://viacep.com.br https://brasilapi.com.br https://minhareceita.org https://publica.cnpj.ws http://127.0.0.1:9123;",
+             $csp,
+             'CEP: ViaCEP. CNPJ: BrasilAPI, com Minha Receita e CNPJ.ws de alternativa (#2996).'
+         );
 diff --git a/tests/Unit/TemaCorTest.php b/tests/Unit/TemaCorTest.php
 index e793bf0c..46306e72 100644
 --- a/tests/Unit/TemaCorTest.php

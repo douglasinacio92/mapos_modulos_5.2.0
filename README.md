@@ -16,6 +16,9 @@ Este pacote leva para o Map-OS **v5.2.0** (a versão mais nova, de 27/10/2026) t
 | **Acompanhar OS** | `index.php/acompanhar/os/ID?doc=CPF` | É o antigo link `mine/os_direta/ID?doc=`, que continua funcionando. Mostra o resumo da OS para quem informa o número e o CPF/CNPJ. |
 | **API do agente (n8n)** | `index.php/agente/...` | As mesmas rotas da 4.x: `buscar_os`, `buscar_cliente`, `buscar_ordens_cliente`, `buscar_produto` e `buscar_servico`. |
 | **Módulos Daitech** | Configurações › Módulos Daitech | Termos da OS, mensagem da visita, validade do orçamento e o cliente "balcão" do PDV. |
+| **Impressões da OS** | Cabeçalho da tela da OS | "Imprimir A4", "Cupom 2 vias" e "Etiquetas (3x)" lado a lado (o "Cupom 80mm" simples saiu). O cupom sai sempre em duas vias. A do cliente traz o QR "Acompanhe sua OS". A da loja traz a senha do aparelho, o QR do WhatsApp do cliente e o QR de status. |
+| **Acompanhar pelo QR** | `index.php/acompanhar/qr/ID/CÓDIGO` | O cliente aponta a câmera para o QR do cupom e confirma o celular do cadastro para ver a OS, sem senha. O código do link é único de cada OS, então trocar o número no endereço não abre a OS de outra pessoa. Tentativas erradas contam no limite de tentativas, como no login. |
+| **Impressão direta** | Configurações › Módulos Daitech › Impressão direta | Imprime o cupom, o A4 e as etiquetas direto na impressora certa, sem a janela de impressão. Precisa do **agente de impressão** instalado no computador do balcão (pasta `agente-impressao`, veja o `LEIAME.txt` dela). Se o agente não responder, abre a impressão do navegador, como antes. |
 | **Aplicativo (PWA)** | Login e todas as telas | Ao abrir o site no Chrome, Edge ou Android aparece o aviso "Instale o Daitech-OS". O sistema vira um ícone na tela inicial e abre em janela própria. No iPhone, o aviso ensina o caminho do Safari (Compartilhar › Adicionar à Tela de Início). Funciona só com **HTTPS**. Sem internet, abre uma página "Sem conexão". |
 | **Nome Daitech-OS** | Todas as telas | O rodapé mostra "Douglas Inacio - Daitech-OS" e os textos que diziam "Map-OS" passam a dizer "Daitech-OS". No `application/.env`, troque `APP_NAME="Map-OS"` por `APP_NAME="Daitech-OS"`: é ele que aparece no login. Os avisos de autoria da licença do Map-OS (Apache 2.0) continuam nos arquivos, como a licença exige. |
 | **Mais cores do sistema** | Menu do usuário › Cor do tema | Quatro temas novos: Rosa, Ciano, Âmbar e Índigo, com contraste conferido (WCAG) no claro e no escuro. |
@@ -67,6 +70,8 @@ São mudanças pequenas, todas marcadas com o comentário `Módulos Daitech`. O 
 | `application/models/Vendas_model.php` | Serviços e avulsos entram no total da venda. |
 | `application/views/os/formulario.php`, `visualizar.php`, `imprimirOs.php` | Seções e impressões do aparelho. |
 | `application/views/tema/topo.php`, `entrada/inicio.php`, `tema/rodape.php`, `entrada/fim.php` | Manifesto do aplicativo, ícones e o aviso de instalação. Os arquivos novos `manifest.webmanifest` e `sw.js` ficam na raiz, ao lado do `index.php`. |
+| `application/views/os/visualizar.php` | Botões "Imprimir A4", "Cupom 2 vias" e "Etiquetas (3x)" no cabeçalho. |
+| `application/helpers/seguranca_cabecalhos_helper.php` | Libera o agente de impressão (`http://127.0.0.1:9123`) na política de segurança (CSP). |
 | `application/views/vendas/visualizar.php`, `partes/totais.php` | Serviços e avulsos na tela da venda. |
 | `application/views/tema/rodape.php` | Chat flutuante do mural. |
 | `assets/js/modules/painel/painel.js` | Clique na visita do calendário abre a agenda. |

@@ -8,7 +8,8 @@ if (! defined('BASEPATH')) {
  * Configurações dos módulos Daitech (Configurações > Módulos Daitech), com a
  * permissão de configurar o sistema (cSistema): termos impressos na OS,
  * mensagem de confirmação da visita, validade do orçamento e o cliente das
- * vendas de balcão do PDV. As chaves da Evolution API e do agente ficam no
+ * vendas de balcão do PDV, e a impressão direta (as impressoras de cupom, A4 e
+ * etiqueta usadas pelo agente de impressão do computador da loja). As chaves da Evolution API e do agente ficam no
  * application/.env; a tela só mostra se estão configuradas.
  */
 class Modulos extends MY_Controller
@@ -17,6 +18,10 @@ class Modulos extends MY_Controller
         'dt_termos_os' => 3000,
         'dt_msg_agendamento' => 2000,
         'dt_validade_orc' => 60,
+        // Impressão direta: nome ou caminho compartilhado (\\PC\Impressora) de cada impressora.
+        'dt_imp_cupom' => 150,
+        'dt_imp_a4' => 150,
+        'dt_imp_etiqueta' => 150,
     ];
 
     public function index()
@@ -42,6 +47,7 @@ class Modulos extends MY_Controller
                 $erros['cliente_balcao'] = 'Escolha um cliente da lista ou deixe em branco.';
             }
             $valores['dt_cliente_balcao'] = $balcao;
+            $valores['dt_imp_direta'] = $this->input->post('dt_imp_direta') ? '1' : '0';
 
             if ($erros === []) {
                 foreach ($valores as $config => $valor) {
@@ -66,6 +72,10 @@ class Modulos extends MY_Controller
             'dt_termos_os' => $this->input->method() === 'post' ? (string) $this->input->post('dt_termos_os') : (string) ($config['dt_termos_os'] ?? ''),
             'dt_msg_agendamento' => $this->input->method() === 'post' ? (string) $this->input->post('dt_msg_agendamento') : (string) ($config['dt_msg_agendamento'] ?? ''),
             'dt_validade_orc' => $this->input->method() === 'post' ? (string) $this->input->post('dt_validade_orc') : (string) ($config['dt_validade_orc'] ?? ''),
+            'dt_imp_direta' => $this->input->method() === 'post' ? ($this->input->post('dt_imp_direta') ? '1' : '0') : (string) ($config['dt_imp_direta'] ?? '0'),
+            'dt_imp_cupom' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_cupom') : (string) ($config['dt_imp_cupom'] ?? ''),
+            'dt_imp_a4' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_a4') : (string) ($config['dt_imp_a4'] ?? ''),
+            'dt_imp_etiqueta' => $this->input->method() === 'post' ? (string) $this->input->post('dt_imp_etiqueta') : (string) ($config['dt_imp_etiqueta'] ?? ''),
             'balcao_id' => $balcao ? (string) $balcao->idClientes : '',
             'balcao_nome' => $balcao ? (string) $balcao->nomeCliente : '',
         ];

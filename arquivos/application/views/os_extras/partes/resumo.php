@@ -29,7 +29,6 @@ if ($campos === [] && $senha === '' && $assinatura === null) {
     <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 id="secao-aparelho" class="text-heading-sm text-text">Dados do aparelho</h2>
         <div class="flex flex-wrap gap-2">
-            <?= component('button', ['label' => 'Etiquetas (3x)', 'icon' => 'tag', 'variant' => 'ghost', 'size' => 'sm', 'href' => site_url('os_extras/etiquetas/' . (int) $os->idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
             <?php if ($pode['editar'] ?? false) { ?>
                 <?= component('button', ['label' => 'Editar', 'icon' => 'pencil', 'variant' => 'outline', 'size' => 'sm', 'href' => site_url('os/editar/' . (int) $os->idOs) . '#secao-aparelho']) ?>
             <?php } ?>

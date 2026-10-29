@@ -1,9 +1,10 @@
 <?php
 /**
- * Cupom 80mm da OS (Daitech): via do cliente e via da loja (a segunda some
- * com "2 vias" desligado nas configurações), com aparelho, senha, defeito,
- * acessórios, itens, total, assinatura digital e os termos de Módulos
- * Daitech. Classes cupom-* do assets/dist/imprimir.css.
+ * Cupom 80mm da OS (Daitech), sempre em duas vias: a do cliente (com o QR
+ * para acompanhar a OS) e a da loja (com a senha do aparelho, o QR do
+ * WhatsApp do cliente e o de status). Aparelho, defeito, acessórios, itens,
+ * total, assinatura digital e os termos de Módulos Daitech. Classes cupom-*
+ * do assets/dist/imprimir.css.
  *
  * @var object       $os
  * @var list<object> $produtos
@@ -13,6 +14,8 @@
  * @var list<string> $vias
  * @var object|null  $emitente
  * @var string       $termos
+ * @var string|null  $qrStatus   QR do acompanhamento (acompanhar/qr/...)
+ * @var string|null  $qrWhatsapp QR do WhatsApp do cliente
  */
 $assinatura = daitechAssinaturaValida($os->assinatura_digital ?? null);
 $texto = static fn ($html) => trim(html_entity_decode(strip_tags(str_ireplace(['<br>', '<br/>', '<br />', '</p>'], "\n", (string) $html)), ENT_QUOTES, 'UTF-8'));
@@ -107,6 +110,27 @@ $aparelho = array_filter([
             <div class="mx-auto w-4/5 border-t border-ink"></div>
             <p class="text-[10px]">Assinatura do cliente</p>
         </div>
+
+        <?php $loja = $indice > 0; ?>
+        <?php if ($qrStatus !== null || ($loja && $qrWhatsapp !== null)) { ?>
+            <div class="mt-2 flex justify-center gap-3 border-t border-dashed border-ink pt-2 text-center">
+                <?php if ($loja && $qrWhatsapp !== null) { ?>
+                    <figure class="w-[30mm]">
+                        <img src="<?= e($qrWhatsapp) ?>" alt="QR code do WhatsApp do cliente" class="mx-auto size-[28mm]">
+                        <figcaption class="text-[9px] leading-tight font-bold">WHATSAPP DO CLIENTE</figcaption>
+                    </figure>
+                <?php } ?>
+                <?php if ($qrStatus !== null) { ?>
+                    <figure class="w-[30mm]">
+                        <img src="<?= e($qrStatus) ?>" alt="QR code para acompanhar a OS" class="mx-auto size-[28mm]">
+                        <figcaption class="text-[9px] leading-tight font-bold"><?= e($loja ? 'STATUS DA OS' : 'ACOMPANHE SUA OS') ?></figcaption>
+                    </figure>
+                <?php } ?>
+            </div>
+            <?php if (! $loja && $qrStatus !== null) { ?>
+                <p class="mt-1 text-center text-[9px] leading-tight">Aponte a câmera do celular e confirme com o celular do cadastro.</p>
+            <?php } ?>
+        <?php } ?>
 
         <?php if ($termos !== '') { ?>
             <div class="mt-2 text-justify text-[9px] leading-tight whitespace-pre-line"><b>TERMOS E CONDIÇÕES:</b><br><?= e($termos) ?></div>

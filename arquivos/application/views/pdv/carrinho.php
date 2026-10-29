@@ -186,7 +186,7 @@ $dados = [
         ],
         'footer' => [
             component('button', ['label' => 'Ver venda', 'icon' => 'eye', 'variant' => 'ghost', 'href' => site_url('vendas'), 'attrs' => ['data-pdv-ver-venda' => true]]),
-            component('button', ['label' => 'Imprimir cupom', 'icon' => 'printer', 'variant' => 'outline', 'href' => site_url('vendas'), 'attrs' => ['data-pdv-cupom' => true, 'target' => '_blank', 'rel' => 'noopener']]),
+            component('button', ['label' => 'Imprimir cupom', 'icon' => 'printer', 'variant' => 'outline', 'href' => site_url('vendas'), 'attrs' => ['data-pdv-cupom' => true, 'data-imprimir' => 'cupom', 'target' => '_blank', 'rel' => 'noopener']]),
             component('button', ['label' => 'Nova venda', 'icon' => 'plus', 'variant' => 'outline', 'href' => site_url('pdv'), 'attrs' => ['data-pdv-nova' => true]]),
         ],
     ]) ?>

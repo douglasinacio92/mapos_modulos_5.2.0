@@ -197,6 +197,43 @@ final class DaitechModulosTest extends MaposTestCase
         $this->assertNull(daitechTelefone('123'));
     }
 
+    public function testCodigoDoQrMudaComAOsEComAChave(): void
+    {
+        $codigo = daitechTokenAcompanhar(1175, 'chave-secreta-da-loja');
+
+        $this->assertSame(20, strlen($codigo));
+        $this->assertSame($codigo, daitechTokenAcompanhar(1175, 'chave-secreta-da-loja'));
+        $this->assertNotSame($codigo, daitechTokenAcompanhar(1176, 'chave-secreta-da-loja'), 'outra OS');
+        $this->assertNotSame($codigo, daitechTokenAcompanhar(1175, 'outra-chave'), 'outra instalação');
+    }
+
+    public function testCelularDoQrConfereSoComONumeroDoCadastro(): void
+    {
+        $cadastro = ['(51) 99796-0244', null];
+
+        $this->assertTrue(daitechCelularConfere('51997960244', $cadastro));
+        $this->assertTrue(daitechCelularConfere('+55 (51) 99796-0244', $cadastro), 'com o 55');
+        $this->assertFalse(daitechCelularConfere('99796-0244', $cadastro), 'sem DDD');
+        $this->assertFalse(daitechCelularConfere('(51) 98888-7777', $cadastro), 'outro número');
+        $this->assertFalse(daitechCelularConfere('', [null, '']), 'cliente sem telefone');
+    }
+
+    public function testImpressaoDiretaSoComChaveLigadaEImpressora(): void
+    {
+        $this->assertNull(daitechImpressaoDireta(['dt_imp_direta' => '0', 'dt_imp_cupom' => 'ELGIN i9']));
+        $this->assertNull(daitechImpressaoDireta(['dt_imp_direta' => '1']), 'ligada sem impressoras');
+        $this->assertSame(
+            ['cupom' => 'ELGIN i9', 'a4' => '\\\\ESCRITORIO\\HP'],
+            daitechImpressaoDireta(['dt_imp_direta' => '1', 'dt_imp_cupom' => ' ELGIN i9 ', 'dt_imp_a4' => '\\\\ESCRITORIO\\HP', 'dt_imp_etiqueta' => ''])
+        );
+    }
+
+    public function testQrCodeSaiComoSvg(): void
+    {
+        $this->assertStringStartsWith('data:image/svg+xml;base64,', (string) daitechQrCode('https://wa.me/5551997960244'));
+        $this->assertNull(daitechQrCode(''));
+    }
+
     public function testEventosDaAgendaNoCalendario(): void
     {
         $eventos = daitechEventosDaAgenda([(object) ['idAgendamento' => 9, 'status' => 'Concluido', 'hora_agendamento' => '14:00', 'nomeCliente' => 'Ana', 'data_agendamento' => '2026-11-03']], 'http://x/agendamentos');

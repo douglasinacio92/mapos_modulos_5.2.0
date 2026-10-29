@@ -60,12 +60,13 @@ $textos = [
             <?php if ($pode['faturar']) { ?>
                 <?= component('button', ['label' => 'Faturar', 'icon' => 'circle-dollar-sign', 'variant' => 'outline', 'attrs' => ['data-modal-abrir' => 'faturar-os']]) ?>
             <?php } ?>
-            <?= component('button', ['label' => 'Imprimir', 'icon' => 'printer', 'variant' => 'ghost', 'href' => site_url('os/imprimir/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
-            <?= component('button', ['label' => 'Cupom 80mm', 'icon' => 'receipt', 'variant' => 'ghost', 'href' => site_url('os/imprimirTermica/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
-            <?php if (is_file(APPPATH . 'views/os_extras/partes/botoes.php')) {
-                // Módulos Daitech: cupom 2 vias.
+            <?php // Módulos Daitech: "Imprimir A4" (data-imprimir para a impressão direta) e, no lugar do "Cupom 80mm", o cupom 2 vias e as etiquetas.?>
+            <?= component('button', ['label' => 'Imprimir A4', 'icon' => 'printer', 'variant' => 'ghost', 'href' => site_url('os/imprimir/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener', 'data-imprimir' => 'a4']]) ?>
+            <?php if (is_file(APPPATH . 'views/os_extras/partes/botoes.php') && function_exists('daitechAssinaturaValida')) {
                 $this->load->view('os_extras/partes/botoes', ['idOs' => $idOs]);
-            } ?>
+            } else { ?>
+                <?= component('button', ['label' => 'Cupom 80mm', 'icon' => 'receipt', 'variant' => 'ghost', 'href' => site_url('os/imprimirTermica/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
+            <?php } ?>
             <?php if ($os->garantias_id) { ?>
                 <?= component('button', ['label' => 'Termo de garantia', 'icon' => 'file-text', 'variant' => 'ghost', 'href' => site_url('garantias/imprimirGarantiaOs/' . $idOs), 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]) ?>
             <?php } ?>
