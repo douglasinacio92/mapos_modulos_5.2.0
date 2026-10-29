@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { limparHtml, absolutizarCss, cssParaTela, fatiasDaFolha, enviarAoAgente, agenteNoAr, TIPOS } from '../../assets/js/modules/daitech/impressao.js';
+import { limparHtml, absolutizarCss, cssParaTela, fatiasDaFolha, enviarAoAgente, agenteNoAr, TIPOS, pretoEBranco } from '../../assets/js/modules/daitech/impressao.js';
 
 test('tira os scripts (o window.print) e põe o <base>', () => {
     const html = '<html><head><title>x</title></head><body><p>OS</p><script src="imprimir.js"></script><SCRIPT>alert(1)</SCRIPT></body></html>';
@@ -52,4 +52,9 @@ test('sem o agente no ar, o sistema sabe que deve usar a impressão do navegador
     assert.equal(await agenteNoAr('http://127.0.0.1:9123', async () => ({ ok: true })), true);
     assert.equal(await agenteNoAr('http://127.0.0.1:9123', async () => { throw new TypeError('Failed to fetch'); }), false);
     assert.equal(await agenteNoAr('http://127.0.0.1:9123', async () => ({ ok: false })), false);
+});
+
+test('na térmica, cinza vira preto ou branco puro (sem pontilhado)', () => {
+    const pixels = new Uint8ClampedArray([0, 0, 0, 255, 120, 120, 120, 255, 200, 200, 200, 255, 255, 255, 255, 0]);
+    assert.deepEqual(Array.from(pretoEBranco(pixels)), [0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
 });

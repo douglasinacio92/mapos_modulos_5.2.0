@@ -24,6 +24,9 @@ $site = ([string]$config.site).Trim().TrimEnd('/')
 # O navegador manda só a origem (https://dominio, sem a pasta). Se o config.json
 # tiver o endereço com a pasta do sistema (https://dominio/mapos), usa só a origem.
 if ($site -match '^(https?://[^/]+)') { $site = $Matches[1].ToLower() }
+# Largura que a cabeça da impressora de cupom imprime de verdade: na Elgin i9
+# (papel de 80 mm) são 72 mm no meio do papel.
+$larguraUtilCupom = if ($config.larguraUtilCupomMm) { [double]$config.larguraUtilCupomMm } else { 72 }
 $log = Join-Path $pasta 'agente.log'
 $limiteCorpo = 40MB
 
@@ -124,6 +127,7 @@ function ImprimirPaginas([string]$impressora, [string]$tipo, [string]$orientacao
         $documento.PrintController = New-Object System.Drawing.Printing.StandardPrintController
 
         $estado = @{ pagina = 0 }
+        $utilCupom = $larguraUtilCupom  # cópia local: as closures abaixo não enxergam o escopo do script
         $documento.add_QueryPageSettings({
             param($remetente, $e)
             $t = $tamanhos[$estado.pagina]
@@ -144,7 +148,15 @@ function ImprimirPaginas([string]$impressora, [string]$tipo, [string]$orientacao
             param($remetente, $e)
             $imagem = $imagens[$estado.pagina]
             $g = $e.Graphics
-            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            if ($tipo -eq 'a4') {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            } else {
+                # Térmicas: a imagem já vem em preto e branco puro; ampliar sem
+                # suavizar mantém o traço contínuo (sem cinza virando pontilhado).
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+            }
             if ($tipo -eq 'a4') {
                 # Dentro das margens; a origem do Graphics é a área imprimível.
                 $area = $e.MarginBounds
@@ -152,10 +164,16 @@ function ImprimirPaginas([string]$impressora, [string]$tipo, [string]$orientacao
                 $y = $area.Y - $e.PageSettings.HardMarginY
                 $largura = $area.Width
             } else {
-                $x = 0
                 $y = 0
-                $largura = $e.PageSettings.PrintableArea.Width
-                if ($largura -le 0) { $largura = $e.PageBounds.Width }
+                $util = $e.PageSettings.PrintableArea.Width
+                if ($util -le 0) { $util = $e.PageBounds.Width }
+                $largura = $util
+                if ($tipo -eq 'cupom') {
+                    # O driver pode dizer 80 mm, mas a cabeça só imprime os 72 do meio:
+                    # encaixa o cupom na largura útil, centralizado.
+                    $largura = [Math]::Min($util, $utilCupom / 25.4 * 100)
+                }
+                $x = ($util - $largura) / 2
             }
             $altura = $largura * $imagem.Height / $imagem.Width
             $g.DrawImage($imagem, [single]$x, [single]$y, [single]$largura, [single]$altura)

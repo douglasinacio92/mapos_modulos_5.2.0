@@ -134,6 +134,31 @@ async function elementoNoCanvas(elemento, css, classeDoBody, larguraPixels, doc,
     return canvas;
 }
 
+/**
+ * Impressoras térmicas só imprimem preto ou branco: o cinza das bordas das
+ * letras vira pontilhado. Aqui cada pixel vira preto ou branco puro (limiar),
+ * e o traço sai contínuo.
+ */
+export function pretoEBranco(dados, limiar = 170) {
+    for (let i = 0; i < dados.length; i += 4) {
+        const luz = dados[i] * 0.299 + dados[i + 1] * 0.587 + dados[i + 2] * 0.114;
+        const valor = luz < limiar ? 0 : 255;
+        dados[i] = valor;
+        dados[i + 1] = valor;
+        dados[i + 2] = valor;
+        dados[i + 3] = 255;
+    }
+
+    return dados;
+}
+
+function binarizar(canvas) {
+    const contexto = canvas.getContext('2d');
+    const imagem = contexto.getImageData(0, 0, canvas.width, canvas.height);
+    pretoEBranco(imagem.data);
+    contexto.putImageData(imagem, 0, 0);
+}
+
 function canvasEmPng(canvas) {
     return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
 }
@@ -215,6 +240,9 @@ export async function montarPaginas(url, tipo, doc = document) {
         for (const elemento of elementos) {
             // A etiqueta tem altura fixa (21mm): sem folga, para não desalinhar a bobina.
             const canvas = await elementoNoCanvas(elemento, css, pagina.body.className, config.pixels, doc, tipo !== 'etiqueta');
+            if (tipo !== 'a4') {
+                binarizar(canvas); // cupom e etiqueta: impressoras térmicas
+            }
             const mmPorPixel = config.larguraMm / config.pixels;
             if (tipo === 'a4') {
                 // Folhas A4: a área útil (190 x 277 mm); uma página alta vira várias folhas.

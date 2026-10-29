@@ -31,7 +31,9 @@ ATUALIZAR (de uma versão anterior)
    O SumatraPDF.exe não é mais usado e pode ser apagado.
 
 IMPRESSORAS
-- Cupom (Elgin i9): cada via sai numa página do tamanho dela. No driver da
+- Cupom (Elgin i9): cada via sai numa página do tamanho dela, encaixada nos
+  72 mm que a cabeça imprime (papel de 80 mm). Se outra impressora cortar as
+  laterais, ajuste "larguraUtilCupomMm" no config.json (ex.: 70). No driver da
   Elgin, deixe o corte automático "a cada página" (ou "por página") para
   cortar entre a via do cliente e a da loja.
 - Etiqueta: 105 x 21 mm (3 etiquetas de 35 x 21 por fileira). Se a etiqueta
