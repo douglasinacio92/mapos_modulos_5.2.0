@@ -33,6 +33,10 @@
   </div>
 </div>
 
+<?php if (isset($this->load) && is_file(APPPATH . 'views/daitech/instalar-app.php')) {
+    $this->load->view('daitech/instalar-app', ['entrada' => false]); // Módulos Daitech
+} ?>
+
 </body>
 
 </html>

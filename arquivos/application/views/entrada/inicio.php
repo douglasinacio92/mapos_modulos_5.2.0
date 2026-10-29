@@ -30,6 +30,11 @@ $nomeSistema = (string) ($this->config->item('app_name') ?: 'Daitech-OS');
     <meta name="csrf-cookie-name" content="<?= e(config_item('csrf_cookie_name')) ?>">
     <title><?= e($entrada['titulo'] . ' — ' . $nomeSistema) ?></title>
     <link rel="icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
+    <?php /* Módulos Daitech: aplicativo instalável (PWA). */ ?>
+    <link rel="manifest" href="<?= e(base_url('manifest.webmanifest')) ?>">
+    <meta name="theme-color" content="#1e9be8">
+    <meta name="apple-mobile-web-app-title" content="Daitech-OS">
+    <link rel="apple-touch-icon" href="<?= e(base_url('assets/img/app/apple-touch-icon.png')) ?>">
     <link rel="stylesheet" href="<?= e(base_url('assets/dist/app.css') . layoutVersaoAsset('assets/dist/app.css')) ?>">
     <script type="module" src="<?= e(base_url('assets/js/app.js')) ?>"></script>
 </head>

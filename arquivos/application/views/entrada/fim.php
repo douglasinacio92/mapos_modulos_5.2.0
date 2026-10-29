@@ -13,5 +13,8 @@
             <?= e(date('Y') . ' © Douglas Inacio · Daitech-OS') ?>
         </p>
     </footer>
+<?php if (isset($this->load) && is_file(APPPATH . 'views/daitech/instalar-app.php')) {
+    $this->load->view('daitech/instalar-app', ['entrada' => true]); // Módulos Daitech
+} ?>
 </body>
 </html>

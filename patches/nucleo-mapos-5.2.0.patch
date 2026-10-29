@@ -441,10 +441,10 @@ index a83ba8cf..cbd8af03 100644
  $atual = array_values(array_filter($menu, static fn ($item) => $item['atual']))[0]['label'] ?? 'Área do cliente';
  ?><!doctype html>
 diff --git a/application/views/entrada/fim.php b/application/views/entrada/fim.php
-index fd95e686..4c17f868 100644
+index fd95e686..103d7c28 100644
 --- a/application/views/entrada/fim.php
 +++ b/application/views/entrada/fim.php
-@@ -10,7 +10,7 @@
+@@ -10,8 +10,11 @@
              <path d="M0 6 Q 7.5 0 15 6 T 30 6 T 45 6 T 60 6 T 75 6 T 90 6 T 105 6 T 120 6 T 135 6 T 150 6 T 165 6 T 180 6 T 195 6 T 210 6 T 225 6 T 240 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
          </svg>
          <p class="mt-4 text-center text-caption text-on-dark-muted">
@@ -452,9 +452,13 @@ index fd95e686..4c17f868 100644
 +            <?= e(date('Y') . ' © Douglas Inacio · Daitech-OS') ?>
          </p>
      </footer>
++<?php if (isset($this->load) && is_file(APPPATH . 'views/daitech/instalar-app.php')) {
++    $this->load->view('daitech/instalar-app', ['entrada' => true]); // Módulos Daitech
++} ?>
  </body>
+ </html>
 diff --git a/application/views/entrada/inicio.php b/application/views/entrada/inicio.php
-index 009b1e5f..f8fa2f12 100644
+index 009b1e5f..51dde520 100644
 --- a/application/views/entrada/inicio.php
 +++ b/application/views/entrada/inicio.php
 @@ -20,7 +20,7 @@
@@ -466,11 +470,16 @@ index 009b1e5f..f8fa2f12 100644
  ?><!doctype html>
  <html lang="pt-br" class="scheme-dark">
  <head>
-@@ -30,7 +30,7 @@ $nomeSistema = (string) ($this->config->item('app_name') ?: 'Map-OS');
+@@ -30,7 +30,12 @@ $nomeSistema = (string) ($this->config->item('app_name') ?: 'Map-OS');
      <meta name="csrf-cookie-name" content="<?= e(config_item('csrf_cookie_name')) ?>">
      <title><?= e($entrada['titulo'] . ' — ' . $nomeSistema) ?></title>
      <link rel="icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
 -    <link rel="stylesheet" href="<?= e(base_url('assets/dist/app.css')) ?>">
++    <?php /* Módulos Daitech: aplicativo instalável (PWA). */ ?>
++    <link rel="manifest" href="<?= e(base_url('manifest.webmanifest')) ?>">
++    <meta name="theme-color" content="#1e9be8">
++    <meta name="apple-mobile-web-app-title" content="Daitech-OS">
++    <link rel="apple-touch-icon" href="<?= e(base_url('assets/img/app/apple-touch-icon.png')) ?>">
 +    <link rel="stylesheet" href="<?= e(base_url('assets/dist/app.css') . layoutVersaoAsset('assets/dist/app.css')) ?>">
      <script type="module" src="<?= e(base_url('assets/js/app.js')) ?>"></script>
  </head>
@@ -692,7 +701,7 @@ index bfb1b649..234f626b 100644
                    <button type="button" data-tema-cor-escolher="<?= e($cor) ?>" aria-pressed="false" aria-label="<?= e($rotulo) ?>" title="<?= e($rotulo) ?>" class="group inline-flex size-9 items-center justify-center rounded-full border border-transparent hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-ring aria-pressed:border-text">
                      <span data-tema="<?= e($cor) ?>" class="inline-flex size-6 items-center justify-center rounded-full bg-primary text-on-primary"><?= icon('check', ['class' => 'size-3.5 opacity-0 group-aria-pressed:opacity-100']) ?></span>
 diff --git a/application/views/tema/rodape.php b/application/views/tema/rodape.php
-index 535050f8..3b6feac3 100644
+index 535050f8..41b2eb10 100644
 --- a/application/views/tema/rodape.php
 +++ b/application/views/tema/rodape.php
 @@ -13,15 +13,18 @@
@@ -717,8 +726,19 @@ index 535050f8..3b6feac3 100644
  <div class="v5-shell">
    <div data-toast-region class="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">
      <?php foreach ($layout['flash'] as $mensagem) { ?>
+@@ -30,6 +33,10 @@
+   </div>
+ </div>
+ 
++<?php if (isset($this->load) && is_file(APPPATH . 'views/daitech/instalar-app.php')) {
++    $this->load->view('daitech/instalar-app', ['entrada' => false]); // Módulos Daitech
++} ?>
++
+ </body>
+ 
+ </html>
 diff --git a/application/views/tema/topo.php b/application/views/tema/topo.php
-index 1d197666..2cfbcd93 100644
+index 1d197666..33d04d10 100644
 --- a/application/views/tema/topo.php
 +++ b/application/views/tema/topo.php
 @@ -17,7 +17,7 @@
@@ -730,11 +750,16 @@ index 1d197666..2cfbcd93 100644
    <meta name="csrf-token-name" content="<?= e(config_item('csrf_token_name')) ?>">
    <meta name="csrf-cookie-name" content="<?= e(config_item('csrf_cookie_name')) ?>">
    <meta name="base-url" content="<?= e(base_url()) ?>">
-@@ -25,7 +25,7 @@
+@@ -25,7 +25,12 @@
    <meta name="csp-nonce" content="<?= e(segurancaNonceAtual()) ?>">
    <?php } ?>
    <link rel="shortcut icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
 -  <script src="<?= e(base_url('assets/js/tema.js')) ?>"></script>
++  <?php /* Módulos Daitech: aplicativo instalável (PWA). */ ?>
++  <link rel="manifest" href="<?= e(base_url('manifest.webmanifest')) ?>">
++  <meta name="theme-color" content="#1e9be8">
++  <meta name="apple-mobile-web-app-title" content="Daitech-OS">
++  <link rel="apple-touch-icon" href="<?= e(base_url('assets/img/app/apple-touch-icon.png')) ?>">
 +  <script src="<?= e(base_url('assets/js/tema.js') . layoutVersaoAsset('assets/js/tema.js')) ?>"></script>
    <?php foreach ($layout['assets']['css'] as $arquivo) { ?>
    <link rel="stylesheet" href="<?= e(layoutUrlAsset($arquivo, base_url())) ?>">
@@ -791,6 +816,9 @@ index a26bd16f..9803977a 100644
      <div data-os-parte="desconto"><?php $this->load->view('vendas/partes/desconto'); ?></div>
      <div data-os-parte="pix"><?php $this->load->view('vendas/partes/pix'); ?></div>
  </div>
+diff --git a/assets/img/favicon.png b/assets/img/favicon.png
+index af883387..06f0fa08 100644
+Binary files a/assets/img/favicon.png and b/assets/img/favicon.png differ
 diff --git a/assets/js/lib/icone.js b/assets/js/lib/icone.js
 index 5bf38000..b63f093a 100644
 --- a/assets/js/lib/icone.js

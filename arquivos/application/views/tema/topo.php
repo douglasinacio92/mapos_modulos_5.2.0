@@ -25,6 +25,11 @@
   <meta name="csp-nonce" content="<?= e(segurancaNonceAtual()) ?>">
   <?php } ?>
   <link rel="shortcut icon" type="image/png" href="<?= e(base_url('assets/img/favicon.png')) ?>">
+  <?php /* Módulos Daitech: aplicativo instalável (PWA). */ ?>
+  <link rel="manifest" href="<?= e(base_url('manifest.webmanifest')) ?>">
+  <meta name="theme-color" content="#1e9be8">
+  <meta name="apple-mobile-web-app-title" content="Daitech-OS">
+  <link rel="apple-touch-icon" href="<?= e(base_url('assets/img/app/apple-touch-icon.png')) ?>">
   <script src="<?= e(base_url('assets/js/tema.js') . layoutVersaoAsset('assets/js/tema.js')) ?>"></script>
   <?php foreach ($layout['assets']['css'] as $arquivo) { ?>
   <link rel="stylesheet" href="<?= e(layoutUrlAsset($arquivo, base_url())) ?>">
