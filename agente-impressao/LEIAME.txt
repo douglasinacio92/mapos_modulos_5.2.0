@@ -23,8 +23,8 @@ fica com o sistema aberto.
 
 Impressoras:
 - Cupom (Elgin i9): no driver da Elgin, deixe o papel em 80mm e o corte
-  automático "ao fim do documento". Cada via sai num documento, então a
-  impressora corta entre a via do cliente e a da loja.
+  automático "a cada página" (ou "por página"). As duas vias vão juntas,
+  uma em cada página, e a impressora corta entre a via do cliente e a da loja.
 - Etiqueta: no driver, crie o papel de 105 x 21 mm (3 etiquetas de 35 x 21).
   Se a etiqueta sair de comprido (girada), troque a "Orientação da etiqueta"
   em Configurações > Módulos Daitech > Impressão direta.
@@ -33,7 +33,10 @@ Impressoras:
 Problemas:
 - Se a impressão direta falhar, o sistema abre a impressão do navegador,
   como antes. Segurando Ctrl no clique, também abre a do navegador.
-- O que o agente fez fica registrado em agente.log, nesta pasta.
+- O que o agente fez fica registrado em agente.log, nesta pasta, com o tempo
+  de cada impressão.
+- O agente deixa um Edge aberto em segundo plano (não aparece na tela) para
+  imprimir rápido. É normal ver o msedge.exe no Gerenciador de Tarefas.
 - Se uma impressão travar (impressora desligada, papel preso), o agente
   desiste em até 1 minuto e volta a atender o sistema sozinho.
 - Para remover: desinstalar.bat.

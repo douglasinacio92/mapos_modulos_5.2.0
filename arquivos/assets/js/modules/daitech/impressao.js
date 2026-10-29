@@ -6,9 +6,9 @@
 //    abre a janela de impressão;
 // 2. as imagens do sistema (logo, anexos) viram data: URI, porque o agente
 //    não tem a sessão do usuário;
-// 3. no cupom, cada via vira um trabalho de impressão separado, com a página
-//    do tamanho dela (80mm x altura): a impressora corta entre a via do
-//    cliente e a da loja;
+// 3. no cupom, as duas vias vão num documento só, uma por página, com a
+//    página da altura da via maior (80mm x altura): a impressora corta entre
+//    as páginas;
 // 4. o HTML vai para o agente do computador da loja (agente-impressao/agente.ps1),
 //    que gera o PDF com o Edge e manda para a impressora configurada.
 // Se o agente não responder, abre a impressão do navegador, como antes.
@@ -42,16 +42,44 @@ export function limparHtml(html, base) {
         : tagBase + semScript;
 }
 
-/** CSS de página por tipo de impressão. altura = altura da via do cupom, em mm. */
+/**
+ * CSS de página por tipo de impressão. altura = altura da via maior do cupom,
+ * em mm, com uma folga para a fonte da impressão nunca cortar o fim da via.
+ */
 export function cssDaPagina(tipo, altura = 0) {
     if (tipo === 'a4') {
         return '@page { size: A4; margin: 10mm; }';
     }
     if (tipo === 'cupom') {
-        return `@page { size: 80mm ${Math.ceil(altura + 6)}mm; margin: 0; }\nhtml, body { margin: 0; padding: 0; }\n.cupom { margin: 0 !important; box-shadow: none !important; break-after: auto !important; }`;
+        return [
+            `@page { size: 80mm ${Math.ceil(altura * 1.06 + 8)}mm; margin: 0; }`,
+            'html, body { margin: 0; padding: 0; }',
+            '.cupom { margin: 0 !important; box-shadow: none !important; break-inside: avoid; }',
+            '.cupom:not(:last-of-type) { break-after: page !important; }',
+            '.cupom:last-of-type { break-after: auto !important; }',
+        ].join('\n');
     }
 
     return '';
+}
+
+/** Coloca as fontes do sistema dentro do CSS (data: URI): o Edge não baixa nada. */
+async function embutirFontes(css, origem) {
+    const urls = new Set(Array.from(css.matchAll(/url\((['"]?)(https?:[^'")]+\.(?:woff2?|ttf|otf)(?:\?[^'")]*)?)\1\)/gi), (m) => m[2]));
+    let resultado = css;
+    await Promise.all(Array.from(urls, async (url) => {
+        if (new URL(url).origin !== origem) {
+            return;
+        }
+        try {
+            const dataUri = await imagemComoDataUri(url);
+            resultado = resultado.split(url).join(dataUri);
+        } catch {
+            // fica o endereço: o Edge baixa a fonte
+        }
+    }));
+
+    return resultado;
 }
 
 async function imagemComoDataUri(src) {
@@ -70,8 +98,8 @@ async function imagemComoDataUri(src) {
 }
 
 /**
- * Monta os documentos que vão para o agente, a partir da URL da página de
- * impressão: um por via no cupom, um só no A4 e na etiqueta.
+ * Monta o documento que vai para o agente, a partir da URL da página de
+ * impressão (as duas vias do cupom vão juntas, uma por página).
  */
 export async function montarImpressao(url, tipo, doc = document) {
     const resposta = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
@@ -104,7 +132,8 @@ export async function montarImpressao(url, tipo, doc = document) {
                 return;
             }
             try {
-                estilos.set(link.getAttribute('href'), absolutizarCss(await (await fetch(link.href)).text(), link.href));
+                const css = absolutizarCss(await (await fetch(link.href)).text(), link.href);
+                estilos.set(link.getAttribute('href'), await embutirFontes(css, origem));
             } catch {
                 // fica o <link>: o Edge baixa o CSS
             }
@@ -119,7 +148,7 @@ export async function montarImpressao(url, tipo, doc = document) {
             }
         }));
 
-        const documento = (css, manter = null) => {
+        const documento = (css) => {
             const copia = pagina.documentElement.cloneNode(true);
             copia.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
                 const css = estilos.get(link.getAttribute('href'));
@@ -129,13 +158,6 @@ export async function montarImpressao(url, tipo, doc = document) {
                     link.replaceWith(estilo);
                 }
             });
-            if (manter !== null) {
-                copia.querySelectorAll('.cupom').forEach((via, i) => {
-                    if (i !== manter) {
-                        via.remove();
-                    }
-                });
-            }
             if (css !== '') {
                 const estilo = pagina.createElement('style');
                 estilo.textContent = css;
@@ -145,9 +167,10 @@ export async function montarImpressao(url, tipo, doc = document) {
             return '<!DOCTYPE html>\n' + copia.outerHTML;
         };
 
-        const vias = tipo === 'cupom' ? Array.from(pagina.querySelectorAll('.cupom')) : [];
-        if (vias.length > 0) {
-            return vias.map((via, i) => documento(cssDaPagina('cupom', via.getBoundingClientRect().height / PX_POR_MM), i));
+        if (tipo === 'cupom') {
+            const alturas = Array.from(pagina.querySelectorAll('.cupom'), (via) => via.getBoundingClientRect().height / PX_POR_MM);
+
+            return [documento(cssDaPagina('cupom', Math.max(0, ...alturas)))];
         }
 
         return [documento(cssDaPagina(tipo))];

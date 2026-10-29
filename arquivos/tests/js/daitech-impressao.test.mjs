@@ -12,8 +12,10 @@ test('tira os scripts (o window.print) e põe o <base>', () => {
     assert.match(limpo, /<head><base href="https:\/\/sistema\.exemplo\/index\.php\/os\/">/);
 });
 
-test('cada via do cupom vira uma página de 80mm com a altura dela', () => {
-    assert.match(cssDaPagina('cupom', 183.2), /@page \{ size: 80mm 190mm; margin: 0; \}/);
+test('as vias do cupom vão em páginas de 80mm, com folga na altura', () => {
+    const css = cssDaPagina('cupom', 100);
+    assert.match(css, /@page \{ size: 80mm 114mm; margin: 0; \}/);
+    assert.match(css, /\.cupom:not\(:last-of-type\) \{ break-after: page !important; \}/);
     assert.match(cssDaPagina('a4'), /size: A4/);
     assert.equal(cssDaPagina('etiqueta'), '', 'a etiqueta já traz o @page dela');
 });
