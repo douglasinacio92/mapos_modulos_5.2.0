@@ -179,7 +179,12 @@ function ListarImpressoras {
 if (-not $site) { throw 'Preencha o campo "site" do config.json com o endereço do sistema, como https://daitechsistemas.com.br' }
 
 $ouvinte = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Loopback, $porta)
-$ouvinte.Start()
+try {
+    $ouvinte.Start()
+} catch {
+    Registrar "Não foi possível abrir a porta ${porta}: outro agente (talvez a versão antiga) já está aberto. Rode o instalar.bat de novo ou reinicie o computador."
+    exit 1
+}
 Registrar "Agente de impressão no ar em http://127.0.0.1:$porta para $site"
 
 while ($true) {
