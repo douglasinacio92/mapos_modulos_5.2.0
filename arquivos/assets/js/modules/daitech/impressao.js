@@ -11,7 +11,9 @@
 //    as páginas;
 // 4. o HTML vai para o agente do computador da loja (agente-impressao/agente.ps1),
 //    que gera o PDF com o Edge e manda para a impressora configurada.
-// Se o agente não responder, abre a impressão do navegador, como antes.
+// A impressão do navegador (com a janela de escolher a impressora) só abre
+// quando o agente não está neste computador. Com o agente no ar, um erro vira
+// um aviso com o motivo, sem janela nenhuma.
 
 import { mostrarToast } from '../../lib/toast.js';
 
@@ -179,19 +181,49 @@ export async function montarImpressao(url, tipo, doc = document) {
     }
 }
 
-export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
+/** fetch com prazo: um agente travado não deixa o botão esperando para sempre. */
+async function buscarComPrazo(url, opcoes, prazoMs, fetchImpl) {
     const controle = typeof AbortController === 'function' ? new AbortController() : null;
-    const prazo = controle ? setTimeout(() => controle.abort(), ESPERA_DO_AGENTE) : null;
+    const prazo = controle ? setTimeout(() => controle.abort(), prazoMs) : null;
+    try {
+        return await fetchImpl(url, { ...opcoes, signal: controle?.signal });
+    } finally {
+        clearTimeout(prazo);
+    }
+}
+
+/** O agente está aberto neste computador? Responde em até 4 segundos. */
+export async function agenteNoAr(agente, fetchImpl = fetch) {
+    try {
+        const resposta = await buscarComPrazo(`${agente}/status`, {}, 4000, fetchImpl);
+
+        return resposta.ok;
+    } catch {
+        return false;
+    }
+}
+
+/** Impressão do navegador num iframe escondido (não esbarra no bloqueio de pop-up). */
+function impressaoDoNavegador(url, doc) {
+    const quadro = doc.createElement('iframe');
+    quadro.setAttribute('aria-hidden', 'true');
+    quadro.tabIndex = -1;
+    quadro.className = 'fixed -left-[9999px] top-0 h-[1px] w-[900px] border-0';
+    quadro.src = url; // a página de impressão abre a janela de impressão sozinha
+    doc.body.append(quadro);
+    setTimeout(() => quadro.remove(), 120000);
+}
+
+export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
     let resposta;
     try {
-        resposta = await fetchImpl(`${agente}/imprimir`, {
+        resposta = await buscarComPrazo(`${agente}/imprimir`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dados),
-            signal: controle?.signal,
-        });
-    } finally {
-        clearTimeout(prazo);
+        }, ESPERA_DO_AGENTE, fetchImpl);
+    } catch (erro) {
+        throw new Error(erro?.name === 'AbortError' ? 'o agente não terminou a impressão em 2 minutos' : 'a conexão com o agente caiu no meio da impressão');
     }
     const corpo = await resposta.json().catch(() => ({}));
     if (!resposta.ok || corpo.ok !== true) {
@@ -201,7 +233,7 @@ export async function enviarAoAgente(agente, dados, fetchImpl = fetch) {
     return corpo;
 }
 
-export default function iniciar(raiz, { doc = document, janela = window } = {}) {
+export default function iniciar(raiz, { doc = document } = {}) {
     const agente = raiz.dataset.agente;
     const orientacao = raiz.dataset.orientacaoEtiqueta || '';
     let impressoras = {};
@@ -225,13 +257,20 @@ export default function iniciar(raiz, { doc = document, janela = window } = {}) 
         link.setAttribute('aria-busy', 'true');
 
         try {
+            if (!(await agenteNoAr(agente))) {
+                // Sem agente neste computador (ou o navegador sem permissão de
+                // acessar a rede local): impressão do navegador, como antes.
+                mostrarToast({ mensagem: 'O agente de impressão não respondeu neste computador. Abrindo a impressão do navegador.', variante: 'warning' }, doc);
+                impressaoDoNavegador(link.href, doc);
+
+                return;
+            }
             const documentos = await montarImpressao(link.href, tipo, doc);
             await enviarAoAgente(agente, { impressora, tipo, ajuste: ajusteDoTipo(tipo, orientacao), documentos });
             mostrarToast({ mensagem: `Enviado para a impressora ${impressora}.`, variante: 'success' }, doc);
         } catch (erro) {
             console.warn('[impressao] impressão direta falhou', erro);
-            mostrarToast({ mensagem: 'Não deu para imprimir direto (o agente de impressão está aberto neste computador?). Abrindo a impressão do navegador.', variante: 'warning' }, doc);
-            janela.open(link.href, '_blank', 'noopener');
+            mostrarToast({ mensagem: `Não foi possível imprimir em ${impressora}: ${String(erro?.message || 'erro desconhecido').replace(/\.\s*$/, '')}. Detalhes no agente.log do computador.`, variante: 'danger', duracao: 15000 }, doc);
         } finally {
             link.removeAttribute('aria-busy');
         }

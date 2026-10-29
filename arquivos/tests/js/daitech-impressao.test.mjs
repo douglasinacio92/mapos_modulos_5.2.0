@@ -46,3 +46,10 @@ test('o CSS colado no HTML mantém os endereços das fontes e imagens', () => {
     assert.match(css, /url\("data:x"\)/);
     assert.match(css, /url\(https:\/\/a\/b\)/);
 });
+
+test('sem o agente no ar, o sistema sabe que deve usar a impressão do navegador', async () => {
+    const { agenteNoAr } = await import('../../assets/js/modules/daitech/impressao.js');
+    assert.equal(await agenteNoAr('http://127.0.0.1:9123', async () => ({ ok: true })), true);
+    assert.equal(await agenteNoAr('http://127.0.0.1:9123', async () => { throw new TypeError('Failed to fetch'); }), false);
+    assert.equal(await agenteNoAr('http://127.0.0.1:9123', async () => ({ ok: false })), false);
+});

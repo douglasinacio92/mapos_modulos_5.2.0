@@ -3,7 +3,14 @@
 // de sugestões dos campos com as impressoras instaladas no Windows.
 
 export async function consultarAgente(agente, fetchImpl = fetch) {
-    const resposta = await fetchImpl(`${agente}/status`);
+    const controle = typeof AbortController === 'function' ? new AbortController() : null;
+    const prazo = controle ? setTimeout(() => controle.abort(), 5000) : null;
+    let resposta;
+    try {
+        resposta = await fetchImpl(`${agente}/status`, { signal: controle?.signal });
+    } finally {
+        clearTimeout(prazo);
+    }
     if (!resposta.ok) {
         throw new Error(`agente ${resposta.status}`);
     }
@@ -33,7 +40,7 @@ export default function iniciar(raiz, { doc = document } = {}) {
                 : 'Agente funcionando, mas nenhuma impressora foi encontrada neste computador.';
             status.className = 'mt-2 text-caption text-success-ink';
         } catch {
-            status.textContent = 'O agente não respondeu. Confira se ele está aberto neste computador e se o navegador tem permissão de acessar a rede local.';
+            status.textContent = 'O agente não respondeu em 5 segundos. Confira: 1) o agente está instalado e aberto neste computador (instalar.bat); 2) o navegador tem permissão de acessar a rede local (cadeado ao lado do endereço › Permissões › Acesso à rede local › Permitir); 3) o "site" do config.json é o endereço deste sistema.';
             status.className = 'mt-2 text-caption text-danger-ink';
         }
     });
